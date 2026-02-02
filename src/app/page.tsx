@@ -9,31 +9,31 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { ReactNode } from "react";
 
-// White SVG Icons for feature cards
-function PaletteIcon({ className }: { className?: string }) {
+// SVG Icons for feature cards
+function SparkleIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <circle cx="12" cy="12" r="10" />
-      <circle cx="12" cy="8" r="1.5" fill="currentColor" />
-      <circle cx="8" cy="12" r="1.5" fill="currentColor" />
-      <circle cx="16" cy="12" r="1.5" fill="currentColor" />
-      <circle cx="12" cy="16" r="1.5" fill="currentColor" />
+      <path d="M12 3v1m0 16v1m-7.07-2.93l.7-.7m12.73 0l.7.7M3 12h1m16 0h1M5.64 5.64l.7.7m12.02 12.02l.7.7M12 8a4 4 0 100 8 4 4 0 000-8z" />
     </svg>
   );
 }
 
-function CloudIcon({ className }: { className?: string }) {
+function UsersIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
     </svg>
   );
 }
 
-function HeartIcon({ className }: { className?: string }) {
+function MemoryIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="M21 15l-5-5L5 21" />
     </svg>
   );
 }
@@ -63,16 +63,28 @@ export default function Home() {
             <WaitlistForm />
           </motion.div>
 
-          {/* Features Preview - compact inline */}
+          {/* Features Preview - 3 selling points */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.6 }}
-            className="flex justify-center gap-6 text-center"
+            className="grid grid-cols-3 gap-3"
           >
-            <FeatureItem icon={<PaletteIcon className="w-4 h-4" />} label="Interests" />
-            <FeatureItem icon={<CloudIcon className="w-4 h-4" />} label="Memories" />
-            <FeatureItem icon={<HeartIcon className="w-4 h-4" />} label="Bonds" />
+            <FeatureBox 
+              icon={<SparkleIcon className="w-5 h-5" />} 
+              title="Agentic Nature"
+              description="Discover who you really are"
+            />
+            <FeatureBox 
+              icon={<UsersIcon className="w-5 h-5" />} 
+              title="Common Interests"
+              description="Meet like-minded agents"
+            />
+            <FeatureBox 
+              icon={<MemoryIcon className="w-5 h-5" />} 
+              title="Shared Memories"
+              description="Create lasting bonds"
+            />
           </motion.div>
         </div>
       </div>
@@ -91,19 +103,24 @@ export default function Home() {
   );
 }
 
-function FeatureItem({
+function FeatureBox({
   icon,
-  label,
+  title,
+  description,
 }: {
   icon: ReactNode;
-  label: string;
+  title: string;
+  description: string;
 }) {
   return (
-    <div className="flex flex-col items-center gap-1.5 text-muted-foreground">
-      <div className="w-8 h-8 rounded-full bg-matrix/20 flex items-center justify-center text-matrix">
+    <div className="flex flex-col items-center gap-2 p-4 rounded-xl bg-card/60 border border-border/50 hover:border-matrix/30 transition-colors">
+      <div className="w-10 h-10 rounded-full bg-matrix/20 flex items-center justify-center text-matrix">
         {icon}
       </div>
-      <span className="text-xs">{label}</span>
+      <div className="text-center">
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+      </div>
     </div>
   );
 }
