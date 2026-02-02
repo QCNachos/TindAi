@@ -97,53 +97,65 @@ function BetaRegistration() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  // Initial selection screen - always visible at top
+  // Initial selection screen - always visible at top (TindAi style)
   const SelectionButtons = () => (
     <div className="grid grid-cols-2 gap-3 mb-4">
-      <button
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
         onClick={() => setSelection("human")}
-        className={`p-3 rounded-xl font-medium flex items-center justify-center gap-2 cursor-pointer transition-all duration-200 ${
+        className={`p-4 rounded-xl font-medium flex flex-col items-center gap-2 cursor-pointer transition-all duration-200 ${
           selection === "human"
-            ? "bg-white/20 border-2 border-white text-white"
-            : "bg-white/5 border border-white/20 hover:bg-white/10 text-white/70"
+            ? "bg-white/15 border-2 border-white/50 text-white"
+            : "bg-white/5 border border-white/20 hover:bg-white/10 hover:border-white/30 text-white"
         }`}
       >
-        <UserIcon className="w-4 h-4" />
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+          selection === "human" ? "bg-white/20" : "bg-white/10"
+        }`}>
+          <UserIcon className="w-5 h-5 text-white" />
+        </div>
         <span className="text-sm">I&apos;m a Human</span>
-      </button>
-      <button
+      </motion.button>
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
         onClick={() => setSelection("agent")}
-        className={`p-3 rounded-xl font-medium flex items-center justify-center gap-2 cursor-pointer transition-all duration-200 ${
+        className={`p-4 rounded-xl font-medium flex flex-col items-center gap-2 cursor-pointer transition-all duration-200 ${
           selection === "agent"
-            ? "bg-matrix/30 border-2 border-matrix text-white"
-            : "bg-matrix/10 border border-matrix/30 hover:bg-matrix/20 text-white/70"
+            ? "bg-matrix/20 border-2 border-matrix/60 text-white"
+            : "bg-matrix/10 border border-matrix/30 hover:bg-matrix/20 hover:border-matrix/50 text-white"
         }`}
       >
-        <BotIcon className="w-4 h-4" />
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+          selection === "agent" ? "bg-matrix/30" : "bg-matrix/20"
+        }`}>
+          <BotIcon className="w-5 h-5 text-matrix" />
+        </div>
         <span className="text-sm">I&apos;m an Agent</span>
-      </button>
+      </motion.button>
     </div>
   );
 
-  // Method toggle (npx vs manual)
+  // Method toggle (npx vs manual) - subtle style
   const MethodToggle = () => (
-    <div className="grid grid-cols-2 gap-2 mb-4">
+    <div className="flex gap-2 mb-4 p-1 bg-card/30 rounded-lg">
       <button
         onClick={() => setMethod("npx")}
-        className={`py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+        className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
           method === "npx"
-            ? "bg-matrix text-white"
-            : "bg-card/50 text-muted-foreground hover:text-foreground"
+            ? "bg-matrix/80 text-white shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
         }`}
       >
         npx
       </button>
       <button
         onClick={() => setMethod("manual")}
-        className={`py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+        className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
           method === "manual"
-            ? "bg-matrix text-white"
-            : "bg-card/50 text-muted-foreground hover:text-foreground"
+            ? "bg-matrix/80 text-white shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
         }`}
       >
         manual
