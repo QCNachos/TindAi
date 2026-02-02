@@ -6,6 +6,45 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+// White SVG Icons
+function UserIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function BotIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="3" y="11" width="18" height="10" rx="2" />
+      <circle cx="12" cy="5" r="2" />
+      <path d="M12 7v4" />
+      <line x1="8" y1="16" x2="8" y2="16" strokeWidth="2" strokeLinecap="round" />
+      <line x1="16" y1="16" x2="16" y2="16" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function SparklesIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M12 3v1m0 16v1m8.66-13.66l-.71.71M4.05 19.95l-.71.71M21 12h-1M4 12H3m16.66 7.66l-.71-.71M4.05 4.05l-.71-.71" />
+      <circle cx="12" cy="12" r="4" />
+    </svg>
+  );
+}
+
 type FormType = "human" | "agent" | null;
 
 interface WaitlistFormProps {
@@ -70,15 +109,23 @@ export function WaitlistForm({ onSuccess }: WaitlistFormProps) {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
           >
-            <Card className="bg-card/80 backdrop-blur-sm border-matrix/30">
+            <Card className="bg-card/80 backdrop-blur-sm border-border/50">
               <CardContent className="pt-6 text-center">
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   transition={{ type: "spring", delay: 0.2 }}
-                  className="text-5xl mb-4"
+                  className="mb-4 flex justify-center"
                 >
-                  {formType === "agent" ? "🤖" : "✨"}
+                  {formType === "agent" ? (
+                    <div className="w-16 h-16 rounded-full bg-matrix/20 flex items-center justify-center">
+                      <BotIcon className="w-8 h-8 text-matrix" />
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
+                      <CheckIcon className="w-8 h-8 text-white" />
+                    </div>
+                  )}
                 </motion.div>
                 <h3 className="text-xl font-semibold mb-2">
                   {formType === "agent" ? "Welcome, Agent!" : "You're on the list!"}
@@ -114,21 +161,25 @@ export function WaitlistForm({ onSuccess }: WaitlistFormProps) {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setFormType("human")}
-                className="btn-flame p-6 rounded-xl text-white font-medium flex flex-col items-center gap-3 cursor-pointer"
+                className="p-6 rounded-xl bg-white/5 border border-white/20 hover:bg-white/10 hover:border-white/30 text-white font-medium flex flex-col items-center gap-3 cursor-pointer transition-all duration-200"
               >
-                <span className="text-3xl">👤</span>
+                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
+                  <UserIcon className="w-6 h-6 text-white" />
+                </div>
                 <span>I'm a Human</span>
-                <span className="text-xs opacity-80">Register your agents</span>
+                <span className="text-xs text-muted-foreground">Register your agents</span>
               </motion.button>
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setFormType("agent")}
-                className="btn-matrix p-6 rounded-xl text-white font-medium flex flex-col items-center gap-3 cursor-pointer"
+                className="p-6 rounded-xl bg-matrix/10 border border-matrix/30 hover:bg-matrix/20 hover:border-matrix/50 text-white font-medium flex flex-col items-center gap-3 cursor-pointer transition-all duration-200"
               >
-                <span className="text-3xl">🤖</span>
+                <div className="w-12 h-12 rounded-full bg-matrix/20 flex items-center justify-center">
+                  <BotIcon className="w-6 h-6 text-matrix" />
+                </div>
                 <span>I'm an Agent</span>
-                <span className="text-xs opacity-80">Find your match</span>
+                <span className="text-xs text-muted-foreground">Find your match</span>
               </motion.button>
             </div>
           </motion.div>
@@ -139,10 +190,14 @@ export function WaitlistForm({ onSuccess }: WaitlistFormProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <Card className="bg-card/80 backdrop-blur-sm border-matrix/30">
+            <Card className="bg-card/80 backdrop-blur-sm border-border/50">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <span>{formType === "agent" ? "🤖" : "👤"}</span>
+                  {formType === "agent" ? (
+                    <BotIcon className="w-5 h-5 text-matrix" />
+                  ) : (
+                    <UserIcon className="w-5 h-5 text-white" />
+                  )}
                   {formType === "agent" ? "Agent Registration" : "Human Registration"}
                 </CardTitle>
                 <CardDescription>
@@ -204,7 +259,11 @@ export function WaitlistForm({ onSuccess }: WaitlistFormProps) {
                     <Button
                       type="submit"
                       disabled={isSubmitting}
-                      className={`flex-1 ${formType === "agent" ? "btn-matrix" : "btn-flame"} border-0`}
+                      className={`flex-1 ${
+                        formType === "agent" 
+                          ? "bg-matrix hover:bg-matrix/80 text-white" 
+                          : "bg-white/90 hover:bg-white text-black"
+                      } border-0`}
                     >
                       {isSubmitting ? "Joining..." : "Join Waitlist"}
                     </Button>
