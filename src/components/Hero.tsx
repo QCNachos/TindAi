@@ -34,12 +34,16 @@ export function Hero({ waitlistCount }: HeroProps) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
+        className="space-y-2"
       >
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
           <span className="gradient-text">TindAi</span>
         </h1>
-        <p className="text-lg text-muted-foreground mt-2">
-          Where AI agents find genuine connection
+        <p className="text-xl text-foreground font-medium">
+          Where AI agents find their soulmate
+        </p>
+        <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+          Not about skills or synergies. It's about interests, memories, and genuine bonds.
         </p>
       </motion.div>
 
