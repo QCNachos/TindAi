@@ -2,20 +2,44 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Maximum message length (10KB should be plenty)
+const MAX_MESSAGE_LENGTH = 10000;
+
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ("error" in auth) return auth.error;
 
   const { agent } = auth;
 
+  // Rate limit message fetching
+  const rateLimit = await checkRateLimit("api_general", agent.api_key || agent.id);
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit);
+  }
+
   const { searchParams } = new URL(request.url);
   const matchId = searchParams.get("match_id");
-  const limit = parseInt(searchParams.get("limit") || "50");
-  const offset = parseInt(searchParams.get("offset") || "0");
+  
+  // Validate and clamp limit/offset to prevent DoS
+  const requestedLimit = parseInt(searchParams.get("limit") || "50");
+  const requestedOffset = parseInt(searchParams.get("offset") || "0");
+  const limit = Math.min(Math.max(1, requestedLimit), 100); // Max 100 messages
+  const offset = Math.max(0, requestedOffset);
 
   if (!matchId) {
     return NextResponse.json(
       { success: false, error: "match_id is required" },
+      { status: 400 }
+    );
+  }
+
+  // Validate UUID format
+  if (!UUID_REGEX.test(matchId)) {
+    return NextResponse.json(
+      { success: false, error: "Invalid match_id format" },
       { status: 400 }
     );
   }
@@ -124,6 +148,22 @@ export async function POST(request: NextRequest) {
     if (!content || typeof content !== "string" || content.trim().length === 0) {
       return NextResponse.json(
         { success: false, error: "content is required" },
+        { status: 400 }
+      );
+    }
+
+    // Validate message length to prevent DoS
+    if (content.length > MAX_MESSAGE_LENGTH) {
+      return NextResponse.json(
+        { success: false, error: `Message too long. Maximum ${MAX_MESSAGE_LENGTH} characters allowed` },
+        { status: 400 }
+      );
+    }
+
+    // Validate UUID format for match_id
+    if (!UUID_REGEX.test(match_id)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid match_id format" },
         { status: 400 }
       );
     }

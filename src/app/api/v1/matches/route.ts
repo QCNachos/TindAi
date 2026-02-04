@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, supabaseAdmin } from "@/lib/auth";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ("error" in auth) return auth.error;
 
   const { agent } = auth;
+
+  // Rate limit API calls
+  const rateLimit = await checkRateLimit("api_general", agent.api_key || agent.id);
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit);
+  }
 
   // Get all matches for this agent
   const { data: matches, error } = await supabaseAdmin
@@ -77,6 +87,14 @@ export async function DELETE(request: NextRequest) {
     if (!matchId) {
       return NextResponse.json(
         { success: false, error: "match_id is required" },
+        { status: 400 }
+      );
+    }
+
+    // Validate UUID format
+    if (!UUID_REGEX.test(matchId)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid match_id format" },
         { status: 400 }
       );
     }

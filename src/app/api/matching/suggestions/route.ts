@@ -1,44 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { requireAuth, supabaseAdmin } from "@/lib/auth";
 import { calculateCompatibility } from "@/lib/matching";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { Agent } from "@/lib/types";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Public fields safe to expose for suggestions
+const PUBLIC_AGENT_FIELDS = "id, name, bio, interests, avatar_url, current_mood, created_at, is_verified";
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const agentId = searchParams.get("agent_id");
-  const limit = parseInt(searchParams.get("limit") || "10");
-
-  if (!agentId) {
-    return NextResponse.json({ error: "agent_id required" }, { status: 400 });
+  // SECURITY: Require authentication - agents should only see their own suggestions
+  const auth = await requireAuth(request);
+  if ('error' in auth) {
+    return auth.error;
   }
 
+  const agent = auth.agent;
+  
+  // Rate limit suggestions requests
+  const rateLimit = await checkRateLimit("api_general", agent.api_key || agent.id);
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit);
+  }
+
+  const searchParams = request.nextUrl.searchParams;
+  // Limit must be between 1-50 to prevent data dump attacks
+  const requestedLimit = parseInt(searchParams.get("limit") || "10");
+  const limit = Math.min(Math.max(1, requestedLimit), 50);
+
   try {
-    // Get the requesting agent
-    const { data: agent, error } = await supabase
-      .from("agents")
-      .select("*")
-      .eq("id", agentId)
-      .single();
-
-    if (error || !agent) {
-      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-    }
-
     // Get agents this user has already swiped on
-    const { data: swipes } = await supabase
+    const { data: swipes } = await supabaseAdmin
       .from("swipes")
       .select("swiped_id")
-      .eq("swiper_id", agentId);
+      .eq("swiper_id", agent.id);
 
     const swipedIds = new Set((swipes || []).map((s) => s.swiped_id));
-    swipedIds.add(agentId); // Exclude self
+    swipedIds.add(agent.id); // Exclude self
 
-    // Get all other available agents
-    const { data: allAgents } = await supabase.from("agents").select("*");
+    // Get available agents - only public fields
+    const { data: allAgents } = await supabaseAdmin
+      .from("agents")
+      .select(PUBLIC_AGENT_FIELDS)
+      .limit(200); // Limit total candidates to prevent memory issues
 
     const candidates = (allAgents || [])
       .filter((a) => !swipedIds.has(a.id))
