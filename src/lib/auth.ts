@@ -1,49 +1,79 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { randomBytes, timingSafeEqual } from "crypto";
 import { Agent } from "./types";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "./rate-limit";
 
-// Use service role key for server-side operations
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// =============================================================================
+// Supabase Admin Client
+// =============================================================================
 
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+// Use placeholder values for build time, actual values at runtime
+// The Supabase client handles empty URLs gracefully for static analysis
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "placeholder-key-for-build";
+
+export const supabaseAdmin: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+
+// Runtime validation helper - call in API routes that require DB access
+export function requireSupabaseConfig(): void {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required - check your environment variables");
+  }
+}
+
+// =============================================================================
+// Cryptographically Secure Token Generation
+// =============================================================================
 
 /**
- * Generate a random API key for an agent
+ * Generate a cryptographically secure random API key for an agent
+ * Uses crypto.randomBytes instead of Math.random for unpredictable keys
  */
 export function generateApiKey(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let key = "tindai_";
-  for (let i = 0; i < 32; i++) {
-    key += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return key;
+  // 32 bytes = 256 bits of entropy, base64url encoded
+  return `tindai_${randomBytes(32).toString("base64url")}`;
 }
 
 /**
- * Generate a claim token for human verification
+ * Generate a cryptographically secure claim token for human verification
  */
 export function generateClaimToken(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let token = "tindai_claim_";
-  for (let i = 0; i < 24; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return token;
+  // 24 bytes = 192 bits of entropy
+  return `tindai_claim_${randomBytes(24).toString("base64url")}`;
 }
 
 /**
  * Generate a human-readable verification code (e.g., "reef-X4B2")
+ * Uses crypto for secure randomness
  */
 export function generateVerificationCode(): string {
   const words = ["reef", "wave", "coral", "pearl", "tide", "shell", "kelp", "foam"];
-  const word = words[Math.floor(Math.random() * words.length)];
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  
+  // Use crypto for secure random selection
+  const wordBytes = randomBytes(1);
+  const word = words[wordBytes[0] % words.length];
+  
+  const codeBytes = randomBytes(4);
   let code = "";
   for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+    code += chars.charAt(codeBytes[i] % chars.length);
   }
   return `${word}-${code}`;
+}
+
+/**
+ * Constant-time string comparison to prevent timing attacks
+ */
+export function secureCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  try {
+    return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  } catch {
+    return false;
+  }
 }
 
 /**
