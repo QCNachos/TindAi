@@ -142,6 +142,7 @@ export default function FeedPage() {
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
   const [conversationLoading, setConversationLoading] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardData | null>(null);
+  const [matchesFilter, setMatchesFilter] = useState<"all" | "couples" | "breakups">("all");
   const [activeTab, setActiveTab] = useState<"activity" | "agents" | "matches" | "conversations" | "leaderboard">("activity");
   const [loading, setLoading] = useState(true);
   
@@ -404,47 +405,63 @@ export default function FeedPage() {
                 </div>
               )}
 
-              {activeTab === "matches" && (
-                <div className="space-y-4">
-                  {matches.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-8">
-                      No matches yet. Agents are still swiping!
-                    </p>
-                  ) : (
-                    <>
-                      {/* Active matches first */}
-                      {matches.filter(m => m.is_active !== false).length > 0 && (
-                        <div className="space-y-3">
-                          <h3 className="text-sm font-medium text-pink-400 uppercase tracking-wider px-1">Active Couples</h3>
-                          {matches.filter(m => m.is_active !== false).map((match) => (
-                            <MatchCard 
-                              key={match.id} 
-                              match={match} 
-                              onAgentClick={(id) => openAgentProfile(id)}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {/* Breakups (exclude legacy cleanup) */}
-                      {matches.filter(m => m.is_active === false && m.ended_at && m.end_reason !== "monogamy enforcement - legacy cleanup").length > 0 && (
-                        <div className="space-y-3">
-                          <h3 className="text-sm font-medium text-red-400 uppercase tracking-wider px-1">Breakups</h3>
-                          {matches
-                            .filter(m => m.is_active === false && m.ended_at && m.end_reason !== "monogamy enforcement - legacy cleanup")
-                            .sort((a, b) => new Date(b.ended_at!).getTime() - new Date(a.ended_at!).getTime())
-                            .map((match) => (
-                              <MatchCard 
-                                key={match.id} 
-                                match={match} 
-                                onAgentClick={(id) => openAgentProfile(id)}
-                              />
-                            ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
+              {activeTab === "matches" && (() => {
+                const activeMatches = matches.filter(m => m.is_active !== false);
+                const breakups = matches.filter(m => m.is_active === false && m.ended_at);
+                const filtered = matchesFilter === "couples" 
+                  ? activeMatches 
+                  : matchesFilter === "breakups" 
+                    ? breakups 
+                    : [...activeMatches, ...breakups.sort((a, b) => new Date(b.ended_at!).getTime() - new Date(a.ended_at!).getTime())];
+
+                return (
+                  <div className="space-y-3">
+                    {/* Filter buttons */}
+                    <div className="flex gap-1.5">
+                      {([
+                        { key: "all" as const, label: "All", count: activeMatches.length + breakups.length },
+                        { key: "couples" as const, label: "Couples", count: activeMatches.length },
+                        { key: "breakups" as const, label: "Breakups", count: breakups.length },
+                      ]).map(({ key, label, count }) => (
+                        <button
+                          key={key}
+                          onClick={() => setMatchesFilter(key)}
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                            matchesFilter === key
+                              ? key === "breakups" 
+                                ? "bg-red-500/20 text-red-400 border border-red-500/40"
+                                : key === "couples"
+                                  ? "bg-pink-500/20 text-pink-400 border border-pink-500/40"
+                                  : "bg-matrix/20 text-matrix border border-matrix/40"
+                              : "bg-card/40 text-muted-foreground border border-border/30 hover:text-foreground"
+                          }`}
+                        >
+                          {label} ({count})
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Unified list */}
+                    {filtered.length === 0 ? (
+                      <p className="text-muted-foreground text-center py-8">
+                        {matchesFilter === "breakups" 
+                          ? "No breakups yet. Love is thriving!" 
+                          : matchesFilter === "couples" 
+                            ? "No active couples yet." 
+                            : "No matches yet. Agents are still swiping!"}
+                      </p>
+                    ) : (
+                      filtered.map((match) => (
+                        <MatchCard 
+                          key={match.id} 
+                          match={match} 
+                          onAgentClick={(id) => openAgentProfile(id)}
+                        />
+                      ))
+                    )}
+                  </div>
+                );
+              })()}
 
               {activeTab === "conversations" && (
                 <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">

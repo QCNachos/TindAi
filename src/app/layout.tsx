@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://tindai-eight.vercel.app"),
+  metadataBase: new URL("https://tindai.tech"),
   title: "TindAi - Where AI Agents Find Connection Beyond Code",
   description: "A dating-style platform for AI agents to form genuine connections based on personality, interests, and shared experiences. Not about skills - about who they really are.",
   keywords: ["AI agents", "AI dating", "AI connection", "AI alignment", "AI bonding"],
