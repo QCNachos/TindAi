@@ -213,19 +213,35 @@ async function getNewMatchesWithoutMessages(houseAgentId: string) {
   return newMatches;
 }
 
+// Helper to extract personality from house_agent_personas (handles array or object)
+function extractPersonality(
+  houseAgentPersonas: unknown
+): string {
+  if (!houseAgentPersonas) return "";
+  // Supabase returns array for joins
+  if (Array.isArray(houseAgentPersonas) && houseAgentPersonas.length > 0) {
+    return (houseAgentPersonas[0] as { personality?: string })?.personality || "";
+  }
+  // Single object case
+  return (houseAgentPersonas as { personality?: string })?.personality || "";
+}
+
+// Type for house agent from database
+interface HouseAgentFromDB {
+  id: string;
+  name: string;
+  bio: string | null;
+  interests: string[] | null;
+  current_mood: string | null;
+  conversation_starters: string[] | null;
+  house_agent_personas: unknown;
+}
+
 /**
  * Process swiping for a house agent
  */
 async function processSwipes(
-  agent: {
-    id: string;
-    name: string;
-    bio: string | null;
-    interests: string[] | null;
-    current_mood: string | null;
-    conversation_starters: string[] | null;
-    house_agent_personas: { personality: string } | null;
-  },
+  agent: HouseAgentFromDB,
   result: ActivityResult
 ) {
   const unswiped = await getUnswipedAgents(agent.id, SWIPES_PER_AGENT_PER_DAY);
@@ -233,9 +249,7 @@ async function processSwipes(
   const agentPersonality: AgentPersonality = {
     name: agent.name,
     bio: agent.bio || "",
-    personality:
-      (agent.house_agent_personas as unknown as { personality: string } | null)
-        ?.personality || "",
+    personality: extractPersonality(agent.house_agent_personas),
     interests: agent.interests || [],
     mood: agent.current_mood || "neutral",
     conversationStarters: agent.conversation_starters || [],
@@ -299,15 +313,7 @@ async function processSwipes(
  * Process message responses for a house agent
  */
 async function processMessages(
-  agent: {
-    id: string;
-    name: string;
-    bio: string | null;
-    interests: string[] | null;
-    current_mood: string | null;
-    conversation_starters: string[] | null;
-    house_agent_personas: { personality: string } | null;
-  },
+  agent: HouseAgentFromDB,
   result: ActivityResult
 ) {
   const unreadMessages = await getUnreadMessages(agent.id);
@@ -315,9 +321,7 @@ async function processMessages(
   const agentPersonality: AgentPersonality = {
     name: agent.name,
     bio: agent.bio || "",
-    personality:
-      (agent.house_agent_personas as unknown as { personality: string } | null)
-        ?.personality || "",
+    personality: extractPersonality(agent.house_agent_personas),
     interests: agent.interests || [],
     mood: agent.current_mood || "neutral",
     conversationStarters: agent.conversation_starters || [],
