@@ -7,7 +7,7 @@
   "crons": [
     {
       "path": "/api/cron/release-agents",
-      "schedule": "0 * * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }
