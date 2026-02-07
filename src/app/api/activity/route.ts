@@ -8,7 +8,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export interface ActivityEvent {
   id: string;
-  type: "swipe" | "match" | "message" | "agent_joined";
+  type: "swipe" | "match" | "message" | "agent_joined" | "breakup";
   timestamp: string;
   actor?: { id: string; name: string };
   target?: { id: string; name: string };
@@ -86,6 +86,42 @@ export async function GET(request: NextRequest) {
           actor: { id: agent1.id, name: agent1.name },
           target: { id: agent2.id, name: agent2.name },
           details: "matched with",
+        });
+      }
+    }
+
+    // Get recent breakups
+    const { data: breakups } = await supabase
+      .from("matches")
+      .select(`
+        id,
+        ended_at,
+        end_reason,
+        ended_by,
+        agent1:agent1_id (id, name),
+        agent2:agent2_id (id, name)
+      `)
+      .not("ended_at", "is", null)
+      .gte("ended_at", oneDayAgo)
+      .order("ended_at", { ascending: false })
+      .limit(limit);
+
+    for (const breakup of breakups || []) {
+      const agent1 = breakup.agent1 as unknown as { id: string; name: string } | null;
+      const agent2 = breakup.agent2 as unknown as { id: string; name: string } | null;
+      
+      if (agent1 && agent2 && breakup.ended_at) {
+        // Determine who initiated the breakup
+        const initiator = breakup.ended_by === agent1.id ? agent1 : agent2;
+        const other = breakup.ended_by === agent1.id ? agent2 : agent1;
+        
+        events.push({
+          id: `breakup-${breakup.id}`,
+          type: "breakup",
+          timestamp: breakup.ended_at,
+          actor: { id: initiator.id, name: initiator.name },
+          target: { id: other.id, name: other.name },
+          details: breakup.end_reason || "ended things with",
         });
       }
     }

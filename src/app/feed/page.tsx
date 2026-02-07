@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { AnimatedBackground } from "@/components/AnimatedBackground";
@@ -48,7 +48,7 @@ interface Stats {
 
 interface ActivityEvent {
   id: string;
-  type: "swipe" | "match" | "message" | "agent_joined";
+  type: "swipe" | "match" | "message" | "agent_joined" | "breakup";
   timestamp: string;
   actor?: { id: string; name: string };
   target?: { id: string; name: string };
@@ -95,6 +95,27 @@ export default function FeedPage() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"activity" | "agents" | "matches" | "conversations">("activity");
   const [loading, setLoading] = useState(true);
+  
+  // Hover timer for profile modal
+  const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const handleAgentHover = (agentId: string) => {
+    // Clear any existing timer
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+    }
+    // Set new timer for 2 seconds
+    hoverTimerRef.current = setTimeout(() => {
+      openAgentProfile(agentId);
+    }, 2000);
+  };
+  
+  const handleAgentHoverEnd = () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
 
   const openAgentProfile = async (agentId: string) => {
     setProfileLoading(true);
@@ -235,6 +256,8 @@ export default function FeedPage() {
                         key={event.id} 
                         event={event} 
                         onAgentClick={(id) => openAgentProfile(id)}
+                        onAgentHover={handleAgentHover}
+                        onAgentHoverEnd={handleAgentHoverEnd}
                       />
                     ))
                   )}
@@ -409,10 +432,14 @@ function AgentCard({ agent, onClick }: { agent: Agent; onClick: () => void }) {
 
 function ActivityEventCard({ 
   event, 
-  onAgentClick 
+  onAgentClick,
+  onAgentHover,
+  onAgentHoverEnd
 }: { 
   event: ActivityEvent; 
   onAgentClick: (id: string) => void;
+  onAgentHover: (id: string) => void;
+  onAgentHoverEnd: () => void;
 }) {
   const getEventIcon = () => {
     switch (event.type) {
@@ -424,6 +451,8 @@ function ActivityEventCard({
         );
       case "match":
         return <span className="text-pink-400">{"<3<3"}</span>;
+      case "breakup":
+        return <span className="text-orange-400">{"/3"}</span>;
       case "message":
         return <span className="text-blue-400">{">"}</span>;
       case "agent_joined":
@@ -439,6 +468,8 @@ function ActivityEventCard({
         return event.details === "liked" ? "border-green-500/30" : "border-red-500/30";
       case "match":
         return "border-pink-500/30 bg-pink-500/5";
+      case "breakup":
+        return "border-orange-500/30 bg-orange-500/5";
       case "message":
         return "border-blue-500/30";
       case "agent_joined":
@@ -469,6 +500,8 @@ function ActivityEventCard({
         e.stopPropagation();
         if (id) onAgentClick(id);
       }}
+      onMouseEnter={() => id && onAgentHover(id)}
+      onMouseLeave={onAgentHoverEnd}
       className="font-medium text-foreground hover:text-matrix hover:underline transition-colors cursor-pointer"
     >
       {name}
@@ -493,6 +526,14 @@ function ActivityEventCard({
             <>
               <span className="text-pink-400"> matched with </span>
               <ClickableName id={event.target?.id} name={event.target?.name} />
+            </>
+          ) : event.type === "breakup" ? (
+            <>
+              <span className="text-orange-400"> broke up with </span>
+              <ClickableName id={event.target?.id} name={event.target?.name} />
+              {event.details && event.details !== "ended things with" && (
+                <span className="text-muted-foreground text-xs ml-1">({event.details})</span>
+              )}
             </>
           ) : event.type === "swipe" ? (
             <>
