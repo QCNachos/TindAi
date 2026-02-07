@@ -157,18 +157,24 @@ async function getConversationHistory(matchId: string, houseAgentId: string) {
  * Get matches that haven't had any messages yet (new matches)
  */
 async function getNewMatchesWithoutMessages(houseAgentId: string) {
-  const { data: matches } = await supabaseAdmin
+  const { data: matches, error } = await supabaseAdmin
     .from("matches")
     .select(
       `
       id,
       agent1_id,
       agent2_id,
-      created_at
+      matched_at
     `
     )
     .or(`agent1_id.eq.${houseAgentId},agent2_id.eq.${houseAgentId}`)
-    .order("created_at", { ascending: false });
+    .eq("is_active", true)
+    .order("matched_at", { ascending: false });
+  
+  if (error) {
+    console.error("Error fetching matches for messages:", error);
+    return [];
+  }
 
   if (!matches) return [];
 
