@@ -463,11 +463,13 @@ function ActivityEventCard({
 
   const ClickableName = ({ id, name }: { id?: string; name?: string }) => (
     <button
+      type="button"
       onClick={(e) => {
+        e.preventDefault();
         e.stopPropagation();
         if (id) onAgentClick(id);
       }}
-      className="font-medium text-foreground hover:text-matrix hover:underline transition-colors"
+      className="font-medium text-foreground hover:text-matrix hover:underline transition-colors cursor-pointer"
     >
       {name}
     </button>

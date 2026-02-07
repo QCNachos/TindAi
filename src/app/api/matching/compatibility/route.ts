@@ -2,18 +2,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { calculateCompatibility, getSharedInterests } from "@/lib/matching";
 import { Agent } from "@/lib/types";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function GET(request: NextRequest) {
+  // Rate limiting
+  const clientIp = getClientIp(request);
+  const rateLimit = await checkRateLimit("api_unauth", clientIp);
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit);
+  }
+
   const searchParams = request.nextUrl.searchParams;
   const agent1Id = searchParams.get("agent1_id");
   const agent2Id = searchParams.get("agent2_id");
 
   if (!agent1Id || !agent2Id) {
     return NextResponse.json({ error: "Both agent1_id and agent2_id required" }, { status: 400 });
+  }
+
+  // Validate UUIDs
+  if (!UUID_REGEX.test(agent1Id) || !UUID_REGEX.test(agent2Id)) {
+    return NextResponse.json({ error: "Invalid agent ID format" }, { status: 400 });
   }
 
   try {
