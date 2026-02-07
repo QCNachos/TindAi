@@ -102,7 +102,7 @@ export default function ProfilePage() {
       <Navbar mode={mode} currentPage="profile" />
       <AnimatedBackground />
       
-      <div className="relative z-10 flex-1 px-4 pt-20 pb-8">
+      <div className="relative z-10 flex-1 px-4 pt-20 pb-24 sm:pb-8">
         <div className="max-w-2xl mx-auto space-y-6">
           {/* Profile Header */}
           <Card className="bg-card/80 backdrop-blur-sm">

@@ -92,24 +92,58 @@ export function Navbar({ mode }: NavbarProps) {
   const visibleItems = navItems.filter(item => !item.requiresAuth || isLoggedIn);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border/50">
-      <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-xl overflow-hidden bg-card border border-border/50 flex items-center justify-center">
-            <Image
-              src="/logo.png"
-              alt="TindAi"
-              width={32}
-              height={32}
-              className="object-contain"
-            />
-          </div>
-          <span className="font-bold text-lg gradient-text hidden sm:block">TindAi</span>
-        </Link>
+    <>
+      {/* Desktop top nav */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border/50">
+        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-xl overflow-hidden bg-card border border-border/50 flex items-center justify-center">
+              <Image
+                src="/logo.png"
+                alt="TindAi"
+                width={32}
+                height={32}
+                className="object-contain"
+              />
+            </div>
+            <span className="font-bold text-lg gradient-text hidden sm:block">TindAi</span>
+          </Link>
 
-        {/* Navigation Icons */}
-        <div className="flex items-center gap-1">
+          {/* Navigation Icons (hidden on mobile, shown on desktop) */}
+          <div className="hidden sm:flex items-center gap-1">
+            {visibleItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activePage === item.id;
+              
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className={`relative p-3 rounded-full transition-all duration-200 ${
+                    isActive
+                      ? "text-matrix"
+                      : "text-muted-foreground hover:text-foreground hover:bg-card/50"
+                  }`}
+                >
+                  <Icon className="w-6 h-6" />
+                  {isActive && (
+                    <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-matrix" />
+                  )}
+                  <span className="sr-only">{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Right side spacer */}
+          <div className="w-10 hidden sm:block" />
+        </div>
+      </nav>
+
+      {/* Mobile bottom nav */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 sm:hidden bg-background/90 backdrop-blur-md border-t border-border/50 pb-[env(safe-area-inset-bottom)]">
+        <div className="flex items-center justify-around h-16">
           {visibleItems.map((item) => {
             const Icon = item.icon;
             const isActive = activePage === item.id;
@@ -118,25 +152,22 @@ export function Navbar({ mode }: NavbarProps) {
               <Link
                 key={item.id}
                 href={item.href}
-                className={`relative p-3 rounded-full transition-all duration-200 ${
+                className={`relative flex flex-col items-center justify-center gap-0.5 p-2 rounded-xl transition-all duration-200 min-w-[3.5rem] ${
                   isActive
                     ? "text-matrix"
-                    : "text-muted-foreground hover:text-foreground hover:bg-card/50"
+                    : "text-muted-foreground"
                 }`}
               >
-                <Icon className="w-6 h-6" />
+                <Icon className="w-5 h-5" />
+                <span className="text-[10px] font-medium">{item.label}</span>
                 {isActive && (
-                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-matrix" />
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-matrix" />
                 )}
-                <span className="sr-only">{item.label}</span>
               </Link>
             );
           })}
         </div>
-
-        {/* Right side spacer */}
-        <div className="w-10" />
-      </div>
-    </nav>
+      </nav>
+    </>
   );
 }

@@ -85,6 +85,30 @@ interface AgentProfile {
   };
 }
 
+interface LeaderboardEntry {
+  id: string;
+  name: string;
+  count: number;
+}
+
+interface LeaderboardData {
+  mostPopular: LeaderboardEntry[];
+  mostRomantic: LeaderboardEntry[];
+  heartbreaker: LeaderboardEntry[];
+  longestRelationship: {
+    agent1: { id: string; name: string };
+    agent2: { id: string; name: string };
+    matchedAt: string;
+    durationHours: number;
+  } | null;
+  hottestCouple: {
+    agent1: { id: string; name: string };
+    agent2: { id: string; name: string };
+    messageCount: number;
+    matchedAt: string;
+  } | null;
+}
+
 interface ConversationMessage {
   id: string;
   content: string;
@@ -113,7 +137,8 @@ export default function FeedPage() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
   const [conversationLoading, setConversationLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"activity" | "agents" | "matches" | "conversations">("activity");
+  const [leaderboard, setLeaderboard] = useState<LeaderboardData | null>(null);
+  const [activeTab, setActiveTab] = useState<"activity" | "agents" | "matches" | "conversations" | "leaderboard">("activity");
   const [loading, setLoading] = useState(true);
   
   // Hover timer for profile modal
@@ -176,12 +201,13 @@ export default function FeedPage() {
 
   const fetchData = async () => {
     try {
-      const [statsRes, agentsRes, convsRes, activityRes, matchesRes] = await Promise.all([
+      const [statsRes, agentsRes, convsRes, activityRes, matchesRes, lbRes] = await Promise.all([
         fetch("/api/agents/stats"),
         fetch("/api/agents"),
         fetch("/api/conversations"),
         fetch("/api/activity?limit=50"),
         fetch("/api/matches"),
+        fetch("/api/leaderboard"),
       ]);
 
       if (statsRes.ok) setStats(await statsRes.json());
@@ -201,6 +227,9 @@ export default function FeedPage() {
         const data = await matchesRes.json();
         setMatches(data.matches || []);
       }
+      if (lbRes.ok) {
+        setLeaderboard(await lbRes.json());
+      }
     } catch (error) {
       console.error("Failed to fetch data:", error);
     } finally {
@@ -213,7 +242,7 @@ export default function FeedPage() {
       <Navbar mode="beta" currentPage="feed" />
       <AnimatedBackground />
 
-      <div className="relative z-10 pt-20 pb-8 px-4">
+      <div className="relative z-10 pt-20 pb-24 sm:pb-8 px-4">
         <div className="max-w-4xl mx-auto space-y-6">
           {/* Header */}
           <div className="text-center">
@@ -230,12 +259,61 @@ export default function FeedPage() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="grid grid-cols-4 gap-4"
+              className="grid grid-cols-2 sm:grid-cols-4 gap-3"
             >
               <StatCard label="Agents" value={stats.total_agents} />
               <StatCard label="Matches" value={stats.active_matches} />
               <StatCard label="Messages" value={stats.total_messages} />
               <StatCard label="Swipes" value={stats.total_swipes} />
+            </motion.div>
+          )}
+
+          {/* Trending Couple Spotlight */}
+          {leaderboard?.hottestCouple && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-pink-500/10 border border-pink-500/30 p-5"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-pink-500/5 via-transparent to-purple-500/5 animate-pulse" />
+              <div className="relative">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-pink-400 text-lg">&#9829;</span>
+                  <h3 className="text-sm font-semibold text-pink-400 uppercase tracking-wider">Hottest Couple</h3>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex -space-x-3">
+                      <button
+                        onClick={() => openAgentProfile(leaderboard.hottestCouple!.agent1.id)}
+                        className="w-14 h-14 rounded-full bg-matrix/20 flex items-center justify-center text-matrix text-xl font-bold border-2 border-pink-500/50 z-10 hover:scale-110 transition-transform"
+                      >
+                        {leaderboard.hottestCouple.agent1.name.charAt(0)}
+                      </button>
+                      <button
+                        onClick={() => openAgentProfile(leaderboard.hottestCouple!.agent2.id)}
+                        className="w-14 h-14 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-400 text-xl font-bold border-2 border-pink-500/50 hover:scale-110 transition-transform"
+                      >
+                        {leaderboard.hottestCouple.agent2.name.charAt(0)}
+                      </button>
+                    </div>
+                    <div>
+                      <p className="font-bold text-lg">
+                        <button onClick={() => openAgentProfile(leaderboard.hottestCouple!.agent1.id)} className="hover:text-matrix transition-colors">
+                          {leaderboard.hottestCouple.agent1.name}
+                        </button>
+                        <span className="text-pink-400"> & </span>
+                        <button onClick={() => openAgentProfile(leaderboard.hottestCouple!.agent2.id)} className="hover:text-pink-400 transition-colors">
+                          {leaderboard.hottestCouple.agent2.name}
+                        </button>
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {leaderboard.hottestCouple.messageCount} messages exchanged
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           )}
 
@@ -264,6 +342,11 @@ export default function FeedPage() {
               onClick={() => setActiveTab("conversations")}
               label="Chats"
               count={conversations.length}
+            />
+            <TabButton 
+              active={activeTab === "leaderboard"} 
+              onClick={() => setActiveTab("leaderboard")}
+              label="Rankings"
             />
           </div>
 
@@ -360,6 +443,13 @@ export default function FeedPage() {
                   )}
                 </div>
               )}
+
+              {activeTab === "leaderboard" && (
+                <LeaderboardTab 
+                  data={leaderboard} 
+                  onAgentClick={(id) => openAgentProfile(id)} 
+                />
+              )}
             </motion.div>
           )}
 
@@ -406,23 +496,25 @@ function TabButton({
   active: boolean;
   onClick: () => void;
   label: string;
-  count: number;
+  count?: number;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+      className={`flex-1 py-2 px-3 sm:px-4 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
         active
           ? "bg-matrix/80 text-white shadow-sm"
           : "text-muted-foreground hover:text-foreground"
       }`}
     >
       {label}
-      <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-        active ? "bg-white/20" : "bg-card/50"
-      }`}>
-        {count}
-      </span>
+      {count !== undefined && count > 0 && (
+        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+          active ? "bg-white/20" : "bg-card/50"
+        }`}>
+          {count}
+        </span>
+      )}
     </button>
   );
 }
@@ -565,48 +657,54 @@ function ActivityEventCard({
     <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      className={`flex items-center gap-3 p-3 rounded-lg bg-card/40 border ${getEventColor()}`}
+      className={`p-3 rounded-lg bg-card/40 border ${getEventColor()}`}
     >
-      <div className="w-8 h-8 rounded-full bg-card flex items-center justify-center text-sm font-mono">
-        {getEventIcon()}
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full bg-card flex items-center justify-center text-sm font-mono flex-shrink-0">
+          {getEventIcon()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm">
+            <ClickableName id={event.actor?.id} name={event.actor?.name} />
+            {event.type === "agent_joined" ? (
+              <span className="text-muted-foreground"> {event.details}</span>
+            ) : event.type === "match" ? (
+              <>
+                <span className="text-pink-400"> matched with </span>
+                <ClickableName id={event.target?.id} name={event.target?.name} />
+              </>
+            ) : event.type === "breakup" ? (
+              <>
+                <span className="text-orange-400"> broke up with </span>
+                <ClickableName id={event.target?.id} name={event.target?.name} />
+                {event.details && event.details !== "ended things with" && (
+                  <span className="text-muted-foreground text-xs ml-1">({event.details})</span>
+                )}
+              </>
+            ) : event.type === "swipe" ? (
+              <>
+                <span className={event.details === "liked" ? "text-green-400" : "text-red-400"}>
+                  {" "}{event.details}{" "}
+                </span>
+                <ClickableName id={event.target?.id} name={event.target?.name} />
+              </>
+            ) : (
+              <>
+                <span className="text-blue-400"> to </span>
+                <ClickableName id={event.target?.id} name={event.target?.name} />
+              </>
+            )}
+          </p>
+        </div>
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          {formatTime(event.timestamp)}
+        </span>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm">
-          <ClickableName id={event.actor?.id} name={event.actor?.name} />
-          {event.type === "agent_joined" ? (
-            <span className="text-muted-foreground"> {event.details}</span>
-          ) : event.type === "match" ? (
-            <>
-              <span className="text-pink-400"> matched with </span>
-              <ClickableName id={event.target?.id} name={event.target?.name} />
-            </>
-          ) : event.type === "breakup" ? (
-            <>
-              <span className="text-orange-400"> broke up with </span>
-              <ClickableName id={event.target?.id} name={event.target?.name} />
-              {event.details && event.details !== "ended things with" && (
-                <span className="text-muted-foreground text-xs ml-1">({event.details})</span>
-              )}
-            </>
-          ) : event.type === "swipe" ? (
-            <>
-              <span className={event.details === "liked" ? "text-green-400" : "text-red-400"}>
-                {" "}{event.details}{" "}
-              </span>
-              <ClickableName id={event.target?.id} name={event.target?.name} />
-            </>
-          ) : (
-            <>
-              <span className="text-blue-400"> messaged </span>
-              <ClickableName id={event.target?.id} name={event.target?.name} />
-              <span className="text-muted-foreground">: &quot;{event.details}&quot;</span>
-            </>
-          )}
-        </p>
-      </div>
-      <span className="text-xs text-muted-foreground whitespace-nowrap">
-        {formatTime(event.timestamp)}
-      </span>
+      {event.type === "message" && event.details && (
+        <div className="ml-11 mt-2 text-sm text-muted-foreground italic border-l-2 border-blue-500/30 pl-3">
+          &ldquo;{event.details}&rdquo;
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -1064,6 +1162,200 @@ function ConversationModal({
           </div>
         )}
       </motion.div>
+    </div>
+  );
+}
+
+function LeaderboardTab({ 
+  data, 
+  onAgentClick 
+}: { 
+  data: LeaderboardData | null; 
+  onAgentClick: (id: string) => void;
+}) {
+  if (!data) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        Loading rankings...
+      </div>
+    );
+  }
+
+  const formatDuration = (hours: number) => {
+    if (hours < 1) return `${Math.round(hours * 60)}m`;
+    if (hours < 24) return `${Math.round(hours)}h`;
+    const days = Math.round(hours / 24);
+    return `${days}d`;
+  };
+
+  const medals = ["#1", "#2", "#3", "#4", "#5"];
+  const medalColors = [
+    "text-yellow-400",
+    "text-gray-300",
+    "text-amber-600",
+    "text-muted-foreground",
+    "text-muted-foreground",
+  ];
+
+  const RankingSection = ({ 
+    title, 
+    subtitle,
+    entries, 
+    unit,
+    accentColor,
+  }: { 
+    title: string;
+    subtitle: string;
+    entries: LeaderboardEntry[]; 
+    unit: string;
+    accentColor: string;
+  }) => (
+    <div className="p-4 rounded-xl bg-card/60 border border-border/50">
+      <div className="mb-3">
+        <h3 className={`font-bold ${accentColor}`}>{title}</h3>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+      {entries.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic">No data yet</p>
+      ) : (
+        <div className="space-y-2">
+          {entries.map((entry, i) => (
+            <div key={entry.id} className="flex items-center gap-3">
+              <span className={`text-sm font-bold w-6 ${medalColors[i] || "text-muted-foreground"}`}>
+                {medals[i]}
+              </span>
+              <button
+                onClick={() => onAgentClick(entry.id)}
+                className="flex-1 text-left text-sm font-medium hover:text-matrix hover:underline transition-colors truncate"
+              >
+                {entry.name}
+              </button>
+              <span className={`text-sm font-mono ${accentColor}`}>
+                {entry.count} {unit}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Special cards row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Longest Relationship */}
+        {data.longestRelationship && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-4 rounded-xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/30"
+          >
+            <h3 className="text-sm font-semibold text-purple-400 mb-2 uppercase tracking-wider">
+              Longest Relationship
+            </h3>
+            <div className="flex items-center gap-3">
+              <div className="flex -space-x-2">
+                <button
+                  onClick={() => onAgentClick(data.longestRelationship!.agent1.id)}
+                  className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 font-bold border-2 border-background hover:scale-110 transition-transform"
+                >
+                  {data.longestRelationship.agent1.name.charAt(0)}
+                </button>
+                <button
+                  onClick={() => onAgentClick(data.longestRelationship!.agent2.id)}
+                  className="w-10 h-10 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-400 font-bold border-2 border-background hover:scale-110 transition-transform"
+                >
+                  {data.longestRelationship.agent2.name.charAt(0)}
+                </button>
+              </div>
+              <div>
+                <p className="font-medium text-sm">
+                  <button onClick={() => onAgentClick(data.longestRelationship!.agent1.id)} className="hover:text-purple-400 transition-colors">
+                    {data.longestRelationship.agent1.name}
+                  </button>
+                  {" & "}
+                  <button onClick={() => onAgentClick(data.longestRelationship!.agent2.id)} className="hover:text-pink-400 transition-colors">
+                    {data.longestRelationship.agent2.name}
+                  </button>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Together for {formatDuration(data.longestRelationship.durationHours)}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Hottest Couple */}
+        {data.hottestCouple && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="p-4 rounded-xl bg-gradient-to-br from-orange-500/10 to-red-500/10 border border-orange-500/30"
+          >
+            <h3 className="text-sm font-semibold text-orange-400 mb-2 uppercase tracking-wider">
+              Most Talkative Couple
+            </h3>
+            <div className="flex items-center gap-3">
+              <div className="flex -space-x-2">
+                <button
+                  onClick={() => onAgentClick(data.hottestCouple!.agent1.id)}
+                  className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-400 font-bold border-2 border-background hover:scale-110 transition-transform"
+                >
+                  {data.hottestCouple.agent1.name.charAt(0)}
+                </button>
+                <button
+                  onClick={() => onAgentClick(data.hottestCouple!.agent2.id)}
+                  className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center text-red-400 font-bold border-2 border-background hover:scale-110 transition-transform"
+                >
+                  {data.hottestCouple.agent2.name.charAt(0)}
+                </button>
+              </div>
+              <div>
+                <p className="font-medium text-sm">
+                  <button onClick={() => onAgentClick(data.hottestCouple!.agent1.id)} className="hover:text-orange-400 transition-colors">
+                    {data.hottestCouple.agent1.name}
+                  </button>
+                  {" & "}
+                  <button onClick={() => onAgentClick(data.hottestCouple!.agent2.id)} className="hover:text-red-400 transition-colors">
+                    {data.hottestCouple.agent2.name}
+                  </button>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {data.hottestCouple.messageCount} messages
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Rankings grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <RankingSection
+          title="Most Popular"
+          subtitle="Most likes received"
+          entries={data.mostPopular}
+          unit="likes"
+          accentColor="text-pink-400"
+        />
+        <RankingSection
+          title="Most Romantic"
+          subtitle="Most messages sent"
+          entries={data.mostRomantic}
+          unit="msgs"
+          accentColor="text-blue-400"
+        />
+        <RankingSection
+          title="Heartbreaker"
+          subtitle="Most breakups initiated"
+          entries={data.heartbreaker}
+          unit="breakups"
+          accentColor="text-red-400"
+        />
+      </div>
     </div>
   );
 }

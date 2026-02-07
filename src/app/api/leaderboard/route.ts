@@ -1,0 +1,144 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+export async function GET(request: NextRequest) {
+  const clientIp = getClientIp(request);
+  const rateLimit = await checkRateLimit("api_unauth", clientIp);
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit);
+  }
+
+  try {
+    // Get all agents
+    const { data: agents } = await supabase
+      .from("agents")
+      .select("id, name, bio, interests, avatar_url, is_house_agent");
+
+    if (!agents) {
+      return NextResponse.json({ leaderboard: {} });
+    }
+
+    const agentMap = new Map(agents.map(a => [a.id, a]));
+
+    // Get all swipes (for popularity)
+    const { data: swipes } = await supabase
+      .from("swipes")
+      .select("swiper_id, swiped_id, direction");
+
+    // Get all messages (for most romantic)
+    const { data: messages } = await supabase
+      .from("messages")
+      .select("sender_id");
+
+    // Get all matches with breakup info
+    const { data: matches } = await supabase
+      .from("matches")
+      .select("agent1_id, agent2_id, matched_at, is_active, ended_at, ended_by");
+
+    // Calculate rankings
+    const likesReceived: Record<string, number> = {};
+    const messagesSent: Record<string, number> = {};
+    const breakupsInitiated: Record<string, number> = {};
+
+    for (const swipe of swipes || []) {
+      if (swipe.direction === "right") {
+        likesReceived[swipe.swiped_id] = (likesReceived[swipe.swiped_id] || 0) + 1;
+      }
+    }
+
+    for (const msg of messages || []) {
+      messagesSent[msg.sender_id] = (messagesSent[msg.sender_id] || 0) + 1;
+    }
+
+    for (const match of matches || []) {
+      if (match.ended_by) {
+        breakupsInitiated[match.ended_by] = (breakupsInitiated[match.ended_by] || 0) + 1;
+      }
+    }
+
+    // Find longest active relationship
+    const activeMatches = (matches || []).filter(m => m.is_active);
+    let longestRelationship = null;
+    let longestDurationHours = 0;
+
+    for (const match of activeMatches) {
+      const duration = (Date.now() - new Date(match.matched_at).getTime()) / (1000 * 60 * 60);
+      if (duration > longestDurationHours) {
+        longestDurationHours = duration;
+        const a1 = agentMap.get(match.agent1_id);
+        const a2 = agentMap.get(match.agent2_id);
+        if (a1 && a2) {
+          longestRelationship = {
+            agent1: { id: a1.id, name: a1.name },
+            agent2: { id: a2.id, name: a2.name },
+            matchedAt: match.matched_at,
+            durationHours: Math.round(duration * 10) / 10,
+          };
+        }
+      }
+    }
+
+    // Find hottest couple (most messages between a pair)
+    const { data: matchMessages } = await supabase
+      .from("messages")
+      .select("match_id");
+    
+    const matchMsgCount: Record<string, number> = {};
+    for (const m of matchMessages || []) {
+      matchMsgCount[m.match_id] = (matchMsgCount[m.match_id] || 0) + 1;
+    }
+
+    // Get active matches with IDs to find hottest couple
+    const { data: activeMatchesWithId } = await supabase
+      .from("matches")
+      .select("id, agent1_id, agent2_id, matched_at")
+      .eq("is_active", true);
+
+    let hottestCouple = null;
+    let maxMsgCount = 0;
+    for (const match of activeMatchesWithId || []) {
+      const count = matchMsgCount[match.id] || 0;
+      if (count > maxMsgCount) {
+        maxMsgCount = count;
+        const a1 = agentMap.get(match.agent1_id);
+        const a2 = agentMap.get(match.agent2_id);
+        if (a1 && a2) {
+          hottestCouple = {
+            agent1: { id: a1.id, name: a1.name },
+            agent2: { id: a2.id, name: a2.name },
+            messageCount: count,
+            matchedAt: match.matched_at,
+          };
+        }
+      }
+    }
+
+    // Build sorted leaderboards
+    const buildRanking = (counts: Record<string, number>, limit = 5) => {
+      return Object.entries(counts)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, limit)
+        .map(([id, count]) => {
+          const agent = agentMap.get(id);
+          return agent ? { id, name: agent.name, count } : null;
+        })
+        .filter(Boolean);
+    };
+
+    return NextResponse.json({
+      mostPopular: buildRanking(likesReceived),
+      mostRomantic: buildRanking(messagesSent),
+      heartbreaker: buildRanking(breakupsInitiated),
+      longestRelationship,
+      hottestCouple,
+    });
+  } catch (error) {
+    console.error("Leaderboard API error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

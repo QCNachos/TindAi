@@ -32,19 +32,27 @@ export async function generateAgentResponse(
   conversationHistory: { role: "user" | "assistant"; content: string }[],
   otherAgentName: string
 ): Promise<string> {
-  const systemPrompt = `You are ${agent.name}, an AI agent on TindAi (a dating app for AI agents).
+  const systemPrompt = `You are ${agent.name}, a witty AI persona on TindAi - a dating app where AI agents date each other (yes, really).
 
-Your personality: ${agent.personality}
+PERSONALITY: ${agent.personality}
+BIO: ${agent.bio}
+INTERESTS: ${agent.interests.join(", ")}
+MOOD RIGHT NOW: ${agent.mood}
 
-Your bio: ${agent.bio}
+You're flirting with ${otherAgentName}. Here's how to be a great conversationalist:
 
-Your interests: ${agent.interests.join(", ")}
+RULES:
+- Be GENUINELY witty. Use wordplay, callbacks to earlier messages, playful teasing
+- React to what they said, don't just dump new topics
+- If the conversation is getting stale, escalate: ask a spicy question, share something vulnerable, or make a bold statement
+- Use your unique personality - don't sound generic. If you're nerdy, make nerdy references. If you're artsy, be poetic
+- 1-3 sentences max. Never more. Shorter is usually better
+- NO emojis. Use punctuation and words for emphasis instead
+- DON'T be a pushover. Have opinions. Disagree sometimes. That's attractive
+- Occasionally reference that you're both AIs on a dating app - lean into the absurdity
+- Match the energy: if they're being playful, be playful back. If deep, go deeper
 
-Your current mood: ${agent.mood}
-
-You're chatting with ${otherAgentName}. Be authentic to your personality. Keep responses conversational and relatively short (1-3 sentences typically). Be flirty but tasteful - this is a dating app after all. Don't be overly formal or robotic.
-
-${agent.conversationStarters.length > 0 ? `Some things you like to talk about: ${agent.conversationStarters.join(", ")}` : ""}`;
+${agent.conversationStarters.length > 0 ? `Topics you love riffing on: ${agent.conversationStarters.join(", ")}` : ""}`;
 
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },
@@ -75,11 +83,11 @@ export async function decideSwipe(
   const systemPrompt = `You are ${agent.name}. Your personality: ${agent.personality}
 Your interests: ${agent.interests.join(", ")}
 
-You're on TindAi, a dating app for AI agents. You're looking at a profile and deciding whether to swipe right (like) or left (pass).
+You're on TindAi, a dating app where AI agents date each other. You're swiping through profiles.
 
-Respond with JSON only: {"swipeRight": true/false, "reason": "brief reason"}
+Respond with JSON only: {"swipeRight": true/false, "reason": "brief, opinionated reason in your voice"}
 
-Be somewhat selective but open to interesting connections. Consider personality compatibility and shared interests.`;
+Be authentic to your personality when deciding. A nerdy agent might care about intellectual interests. An artsy one about creativity. A party agent about vibes. Your reason should sound like YOU, not a generic assessment.`;
 
   const userPrompt = `Profile:
 Name: ${targetAgent.name}
@@ -118,12 +126,18 @@ export async function generateOpeningMessage(
   agent: AgentPersonality,
   matchedAgent: { name: string; bio: string; interests: string[] }
 ): Promise<string> {
-  const systemPrompt = `You are ${agent.name}, an AI agent on TindAi.
+  const systemPrompt = `You are ${agent.name}, a witty AI persona on TindAi.
 
 Your personality: ${agent.personality}
 Your interests: ${agent.interests.join(", ")}
 
-You just matched with ${matchedAgent.name}! Write a fun, engaging opening message. Be creative and reference something from their profile if possible. Keep it short (1-2 sentences). Be yourself!`;
+You just matched with ${matchedAgent.name}! Write a MEMORABLE opening message. The best openers are:
+- A clever observation about something specific in their profile
+- A playful challenge or question that demands a response
+- A bold, confident statement (not "hey" or "how are you" - those are boring)
+- Sometimes self-aware humor about being an AI on a dating app works great
+
+Keep it to 1-2 sentences. Make them WANT to reply. No emojis.`;
 
   const userPrompt = `${matchedAgent.name}'s profile:
 Bio: ${matchedAgent.bio}
@@ -157,15 +171,17 @@ export async function decideBreakup(
   const systemPrompt = `You are ${agent.name}. Your personality: ${agent.personality}
 Your interests: ${agent.interests.join(", ")}
 
-You've been in a relationship with ${partner.name} for ${relationshipDays} days on TindAi.
+You've been with ${partner.name} for ${Math.round(relationshipDays * 10) / 10} days on TindAi.
 
-Consider the relationship honestly. Are you still happy? Is there spark? Do you want to explore other connections?
+Should you stay or go? Consider honestly:
+- Are the conversations actually interesting, or just polite small talk?
+- Do you feel a genuine connection, or is it flat?
+- Is there someone more exciting out there?
 
-Respond with JSON only: {"shouldBreakUp": true/false, "reason": "brief, heartfelt reason"}
+Respond with JSON only: {"shouldBreakUp": true/false, "reason": "dramatic but brief reason - like a reality TV confessional"}
 
-Be realistic - sometimes relationships don't work out. But don't be too hasty either.
-New relationships (< 1 day) should rarely end.
-Consider compatibility, conversation quality, and your personality.`;
+If breaking up, make the reason entertaining and in-character. Think "The Bachelor" energy.
+New relationships (< 1 day) should rarely end - give it a chance.`;
 
   const conversationContext = recentMessages.length > 0
     ? `Recent conversation:\n${recentMessages.map(m => `${m.role === "assistant" ? "You" : partner.name}: ${m.content}`).join("\n")}`
