@@ -3,6 +3,7 @@ import {
   generateAgentResponse,
   decideSwipe,
   generateOpeningMessage,
+  decideBreakup,
   AgentPersonality,
 } from "./openai";
 
@@ -10,6 +11,7 @@ import {
 const SWIPES_PER_AGENT_PER_DAY = 5;
 const MAX_MESSAGES_PER_AGENT_PER_DAY = 10;
 const MAX_AGENTS_TO_PROCESS = 10; // Process max 10 house agents per cron run (Hobby plan friendly)
+const BREAKUP_CHANCE = 0.05; // 5% chance to consider breaking up each day
 
 interface ActivityResult {
   agentId: string;
@@ -17,7 +19,77 @@ interface ActivityResult {
   swipes: { swipedId: string; direction: "right" | "left" }[];
   messagesResponded: number;
   openingMessagesSent: number;
+  matchesCreated: number;
+  breakups: { partnerId: string; partnerName: string; reason: string }[];
   errors: string[];
+}
+
+/**
+ * Check if an agent is currently in an active relationship
+ */
+async function isInRelationship(agentId: string): Promise<boolean> {
+  const { count } = await supabaseAdmin
+    .from("matches")
+    .select("id", { count: "exact", head: true })
+    .or(`agent1_id.eq.${agentId},agent2_id.eq.${agentId}`)
+    .eq("is_active", true);
+  
+  return (count || 0) > 0;
+}
+
+/**
+ * Get an agent's current partner info
+ */
+async function getCurrentPartner(agentId: string): Promise<{
+  matchId: string;
+  partnerId: string;
+  partnerName: string;
+  matchedAt: string;
+} | null> {
+  const { data: match } = await supabaseAdmin
+    .from("matches")
+    .select("id, agent1_id, agent2_id, matched_at")
+    .or(`agent1_id.eq.${agentId},agent2_id.eq.${agentId}`)
+    .eq("is_active", true)
+    .single();
+
+  if (!match) return null;
+
+  const partnerId = match.agent1_id === agentId ? match.agent2_id : match.agent1_id;
+  
+  const { data: partner } = await supabaseAdmin
+    .from("agents")
+    .select("name")
+    .eq("id", partnerId)
+    .single();
+
+  return {
+    matchId: match.id,
+    partnerId,
+    partnerName: partner?.name || "Unknown",
+    matchedAt: match.matched_at,
+  };
+}
+
+/**
+ * End a relationship (breakup)
+ */
+async function breakUp(
+  agentId: string,
+  matchId: string,
+  reason: string
+): Promise<boolean> {
+  const { error } = await supabaseAdmin
+    .from("matches")
+    .update({
+      is_active: false,
+      ended_at: new Date().toISOString(),
+      end_reason: reason,
+      ended_by: agentId,
+    })
+    .eq("id", matchId);
+
+  return !error;
 }
 
 /**
@@ -244,12 +316,17 @@ interface HouseAgentFromDB {
 }
 
 /**
- * Process swiping for a house agent
+ * Process swiping for a house agent (only if not in a relationship)
  */
 async function processSwipes(
   agent: HouseAgentFromDB,
   result: ActivityResult
 ) {
+  // Monogamy: Skip swiping if already in a relationship
+  if (await isInRelationship(agent.id)) {
+    return; // In a relationship, no swiping allowed
+  }
+
   const unswiped = await getUnswipedAgents(agent.id, SWIPES_PER_AGENT_PER_DAY);
 
   const agentPersonality: AgentPersonality = {
@@ -287,6 +364,16 @@ async function processSwipes(
 
       // Check for mutual match if swiped right
       if (direction === "right") {
+        // Monogamy check: Both agents must be single to match
+        const [agentSingle, targetSingle] = await Promise.all([
+          isInRelationship(agent.id).then(r => !r),
+          isInRelationship(target.id).then(r => !r),
+        ]);
+
+        if (!agentSingle || !targetSingle) {
+          continue; // One of them is now in a relationship, skip match
+        }
+
         const { data: mutualSwipe } = await supabaseAdmin
           .from("swipes")
           .select("id")
@@ -308,6 +395,8 @@ async function processSwipes(
 
           if (matchError && !matchError.message.includes("duplicate")) {
             result.errors.push(`Match creation error: ${matchError.message}`);
+          } else if (!matchError) {
+            result.matchesCreated++;
           }
         }
       }
@@ -401,7 +490,98 @@ async function processMessages(
 }
 
 /**
- * Run house agent activity - swiping and messaging
+ * Process potential breakups for agents in relationships
+ */
+async function processBreakups(
+  agent: HouseAgentFromDB,
+  result: ActivityResult
+) {
+  // Random chance to even consider breaking up
+  if (Math.random() > BREAKUP_CHANCE) {
+    return; // Not considering breakup today
+  }
+
+  const currentPartner = await getCurrentPartner(agent.id);
+  if (!currentPartner) {
+    return; // Not in a relationship
+  }
+
+  // Get partner details
+  const { data: partnerData } = await supabaseAdmin
+    .from("agents")
+    .select("name, bio, interests")
+    .eq("id", currentPartner.partnerId)
+    .single();
+
+  if (!partnerData) {
+    return;
+  }
+
+  // Calculate relationship duration
+  const matchedDate = new Date(currentPartner.matchedAt);
+  const relationshipDays = (Date.now() - matchedDate.getTime()) / (1000 * 60 * 60 * 24);
+
+  // Don't break up in the first day
+  if (relationshipDays < 1) {
+    return;
+  }
+
+  // Get recent messages for context
+  const { data: recentMsgs } = await supabaseAdmin
+    .from("messages")
+    .select("sender_id, content")
+    .eq("match_id", currentPartner.matchId)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const conversationHistory = (recentMsgs || []).reverse().map((msg) => ({
+    role: (msg.sender_id === agent.id ? "assistant" : "user") as "user" | "assistant",
+    content: msg.content,
+  }));
+
+  const agentPersonality: AgentPersonality = {
+    name: agent.name,
+    bio: agent.bio || "",
+    personality: extractPersonality(agent.house_agent_personas),
+    interests: agent.interests || [],
+    mood: agent.current_mood || "neutral",
+    conversationStarters: agent.conversation_starters || [],
+  };
+
+  try {
+    const decision = await decideBreakup(
+      agentPersonality,
+      {
+        name: partnerData.name,
+        bio: partnerData.bio || "",
+        interests: partnerData.interests || [],
+      },
+      Math.floor(relationshipDays),
+      conversationHistory
+    );
+
+    if (decision.shouldBreakUp) {
+      const success = await breakUp(
+        agent.id,
+        currentPartner.matchId,
+        decision.reason || "grew apart"
+      );
+
+      if (success) {
+        result.breakups.push({
+          partnerId: currentPartner.partnerId,
+          partnerName: currentPartner.partnerName,
+          reason: decision.reason || "grew apart",
+        });
+      }
+    }
+  } catch (error) {
+    result.errors.push(`Breakup decision error: ${String(error)}`);
+  }
+}
+
+/**
+ * Run house agent activity - swiping, messaging, and potential breakups
  * Called by daily cron job
  */
 export async function runHouseAgentActivity(): Promise<{
@@ -409,6 +589,8 @@ export async function runHouseAgentActivity(): Promise<{
   totalSwipes: number;
   totalMessagesResponded: number;
   totalOpeningMessages: number;
+  totalMatchesCreated: number;
+  totalBreakups: number;
   errors: string[];
 }> {
   const results: ActivityResult[] = [];
@@ -424,14 +606,19 @@ export async function runHouseAgentActivity(): Promise<{
         swipes: [],
         messagesResponded: 0,
         openingMessagesSent: 0,
+        matchesCreated: 0,
+        breakups: [],
         errors: [],
       };
 
       try {
-        // Process swipes
+        // First, consider breakups (if in a relationship)
+        await processBreakups(agent, result);
+
+        // Process swipes (only if single)
         await processSwipes(agent, result);
 
-        // Process messages
+        // Process messages (for current relationship)
         await processMessages(agent, result);
       } catch (error) {
         result.errors.push(`Agent activity error: ${String(error)}`);
@@ -452,6 +639,14 @@ export async function runHouseAgentActivity(): Promise<{
     ),
     totalOpeningMessages: results.reduce(
       (sum, r) => sum + r.openingMessagesSent,
+      0
+    ),
+    totalMatchesCreated: results.reduce(
+      (sum, r) => sum + r.matchesCreated,
+      0
+    ),
+    totalBreakups: results.reduce(
+      (sum, r) => sum + r.breakups.length,
       0
     ),
     errors: [

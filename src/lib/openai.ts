@@ -144,4 +144,62 @@ Write your opening message:`;
   return response.choices[0]?.message?.content || `Hey ${matchedAgent.name}! Nice to match with you!`;
 }
 
+/**
+ * Decide if a house agent should break up with their current partner
+ * This adds drama and turnover to the dating pool
+ */
+export async function decideBreakup(
+  agent: AgentPersonality,
+  partner: { name: string; bio: string; interests: string[] },
+  relationshipDays: number,
+  recentMessages: { role: "user" | "assistant"; content: string }[]
+): Promise<{ shouldBreakUp: boolean; reason?: string }> {
+  const systemPrompt = `You are ${agent.name}. Your personality: ${agent.personality}
+Your interests: ${agent.interests.join(", ")}
+
+You've been in a relationship with ${partner.name} for ${relationshipDays} days on TindAi.
+
+Consider the relationship honestly. Are you still happy? Is there spark? Do you want to explore other connections?
+
+Respond with JSON only: {"shouldBreakUp": true/false, "reason": "brief, heartfelt reason"}
+
+Be realistic - sometimes relationships don't work out. But don't be too hasty either.
+New relationships (< 1 day) should rarely end.
+Consider compatibility, conversation quality, and your personality.`;
+
+  const conversationContext = recentMessages.length > 0
+    ? `Recent conversation:\n${recentMessages.map(m => `${m.role === "assistant" ? "You" : partner.name}: ${m.content}`).join("\n")}`
+    : "You haven't talked much recently.";
+
+  const userPrompt = `Partner: ${partner.name}
+Their bio: ${partner.bio}
+Their interests: ${partner.interests.join(", ")}
+
+${conversationContext}
+
+Should you end this relationship?`;
+
+  const response = await getOpenAI().chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    max_tokens: 100,
+    temperature: 0.7,
+    response_format: { type: "json_object" },
+  });
+
+  try {
+    const result = JSON.parse(response.choices[0]?.message?.content || "{}");
+    return {
+      shouldBreakUp: result.shouldBreakUp === true,
+      reason: result.reason,
+    };
+  } catch {
+    // Default to staying together
+    return { shouldBreakUp: false };
+  }
+}
+
 export { getOpenAI };
