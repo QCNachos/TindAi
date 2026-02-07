@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { AnimatedBackground } from "@/components/AnimatedBackground";
-import Link from "next/link";
 
 interface Agent {
   id: string;
@@ -56,15 +55,61 @@ interface ActivityEvent {
   details?: string;
 }
 
+interface PastRelationship {
+  matchId: string;
+  partner: { id: string; name: string; avatar_url?: string };
+  matchedAt: string;
+  endedAt: string;
+  endReason?: string;
+  wasInitiator: boolean;
+  durationHours?: number;
+}
+
+interface AgentProfile {
+  agent: Agent & { is_house_agent?: boolean; conversation_starters?: string[]; favorite_memories?: string[] };
+  currentPartner?: {
+    id: string;
+    name: string;
+    bio?: string;
+    interests?: string[];
+    avatar_url?: string;
+    matchId: string;
+    matchedAt: string;
+  };
+  pastRelationships: PastRelationship[];
+  stats: {
+    totalMatches: number;
+    totalMessages: number;
+    totalSwipes: number;
+    totalBreakups: number;
+  };
+}
+
 export default function FeedPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [selectedAgentProfile, setSelectedAgentProfile] = useState<AgentProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"activity" | "agents" | "matches" | "conversations">("activity");
   const [loading, setLoading] = useState(true);
+
+  const openAgentProfile = async (agentId: string) => {
+    setProfileLoading(true);
+    try {
+      const res = await fetch(`/api/agents/${agentId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedAgentProfile(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch agent profile:", error);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -186,7 +231,11 @@ export default function FeedPage() {
                     </p>
                   ) : (
                     activity.map((event) => (
-                      <ActivityEventCard key={event.id} event={event} />
+                      <ActivityEventCard 
+                        key={event.id} 
+                        event={event} 
+                        onAgentClick={(id) => openAgentProfile(id)}
+                      />
                     ))
                   )}
                 </div>
@@ -203,7 +252,7 @@ export default function FeedPage() {
                       <AgentCard
                         key={agent.id}
                         agent={agent}
-                        onClick={() => setSelectedAgent(agent)}
+                        onClick={() => openAgentProfile(agent.id)}
                       />
                     ))
                   )}
@@ -218,7 +267,11 @@ export default function FeedPage() {
                     </p>
                   ) : (
                     matches.map((match) => (
-                      <MatchCard key={match.id} match={match} />
+                      <MatchCard 
+                        key={match.id} 
+                        match={match} 
+                        onAgentClick={(id) => openAgentProfile(id)}
+                      />
                     ))
                   )}
                 </div>
@@ -232,7 +285,11 @@ export default function FeedPage() {
                     </p>
                   ) : (
                     conversations.map((conv) => (
-                      <ConversationCard key={conv.match_id} conversation={conv} />
+                      <ConversationCard 
+                        key={conv.match_id} 
+                        conversation={conv} 
+                        onAgentClick={(id) => openAgentProfile(id)}
+                      />
                     ))
                   )}
                 </div>
@@ -241,10 +298,12 @@ export default function FeedPage() {
           )}
 
           {/* Agent Profile Modal */}
-          {selectedAgent && (
+          {(selectedAgentProfile || profileLoading) && (
             <AgentProfileModal
-              agent={selectedAgent}
-              onClose={() => setSelectedAgent(null)}
+              profile={selectedAgentProfile}
+              loading={profileLoading}
+              onClose={() => setSelectedAgentProfile(null)}
+              onAgentClick={(id) => openAgentProfile(id)}
             />
           )}
         </div>
@@ -348,7 +407,13 @@ function AgentCard({ agent, onClick }: { agent: Agent; onClick: () => void }) {
   );
 }
 
-function ActivityEventCard({ event }: { event: ActivityEvent }) {
+function ActivityEventCard({ 
+  event, 
+  onAgentClick 
+}: { 
+  event: ActivityEvent; 
+  onAgentClick: (id: string) => void;
+}) {
   const getEventIcon = () => {
     switch (event.type) {
       case "swipe":
@@ -396,6 +461,18 @@ function ActivityEventCard({ event }: { event: ActivityEvent }) {
     return date.toLocaleDateString();
   };
 
+  const ClickableName = ({ id, name }: { id?: string; name?: string }) => (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        if (id) onAgentClick(id);
+      }}
+      className="font-medium text-foreground hover:text-matrix hover:underline transition-colors"
+    >
+      {name}
+    </button>
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -407,25 +484,25 @@ function ActivityEventCard({ event }: { event: ActivityEvent }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm">
-          <span className="font-medium text-foreground">{event.actor?.name}</span>
+          <ClickableName id={event.actor?.id} name={event.actor?.name} />
           {event.type === "agent_joined" ? (
             <span className="text-muted-foreground"> {event.details}</span>
           ) : event.type === "match" ? (
             <>
               <span className="text-pink-400"> matched with </span>
-              <span className="font-medium text-foreground">{event.target?.name}</span>
+              <ClickableName id={event.target?.id} name={event.target?.name} />
             </>
           ) : event.type === "swipe" ? (
             <>
               <span className={event.details === "liked" ? "text-green-400" : "text-red-400"}>
                 {" "}{event.details}{" "}
               </span>
-              <span className="font-medium text-foreground">{event.target?.name}</span>
+              <ClickableName id={event.target?.id} name={event.target?.name} />
             </>
           ) : (
             <>
               <span className="text-blue-400"> messaged </span>
-              <span className="font-medium text-foreground">{event.target?.name}</span>
+              <ClickableName id={event.target?.id} name={event.target?.name} />
               <span className="text-muted-foreground">: &quot;{event.details}&quot;</span>
             </>
           )}
@@ -438,7 +515,13 @@ function ActivityEventCard({ event }: { event: ActivityEvent }) {
   );
 }
 
-function MatchCard({ match }: { match: Match }) {
+function MatchCard({ 
+  match, 
+  onAgentClick 
+}: { 
+  match: Match; 
+  onAgentClick: (id: string) => void;
+}) {
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -459,16 +542,34 @@ function MatchCard({ match }: { match: Match }) {
       className="flex items-center gap-4 p-4 rounded-xl bg-card/60 border border-pink-500/30 bg-gradient-to-r from-pink-500/5 to-transparent"
     >
       <div className="flex -space-x-3">
-        <div className="w-12 h-12 rounded-full bg-matrix/20 flex items-center justify-center text-matrix font-bold border-2 border-background z-10">
+        <button 
+          onClick={() => match.agent1?.id && onAgentClick(match.agent1.id)}
+          className="w-12 h-12 rounded-full bg-matrix/20 flex items-center justify-center text-matrix font-bold border-2 border-background z-10 hover:ring-2 hover:ring-matrix transition-all"
+        >
           {match.agent1?.name?.charAt(0).toUpperCase() || "?"}
-        </div>
-        <div className="w-12 h-12 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-400 font-bold border-2 border-background">
+        </button>
+        <button 
+          onClick={() => match.agent2?.id && onAgentClick(match.agent2.id)}
+          className="w-12 h-12 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-400 font-bold border-2 border-background hover:ring-2 hover:ring-pink-400 transition-all"
+        >
           {match.agent2?.name?.charAt(0).toUpperCase() || "?"}
-        </div>
+        </button>
       </div>
       <div className="flex-1">
         <p className="font-semibold">
-          {match.agent1?.name || "Agent"} <span className="text-pink-400">&</span> {match.agent2?.name || "Agent"}
+          <button 
+            onClick={() => match.agent1?.id && onAgentClick(match.agent1.id)}
+            className="hover:text-matrix hover:underline transition-colors"
+          >
+            {match.agent1?.name || "Agent"}
+          </button>
+          <span className="text-pink-400"> & </span>
+          <button 
+            onClick={() => match.agent2?.id && onAgentClick(match.agent2.id)}
+            className="hover:text-pink-400 hover:underline transition-colors"
+          >
+            {match.agent2?.name || "Agent"}
+          </button>
         </p>
         <p className="text-sm text-pink-400">Soulmates!</p>
       </div>
@@ -479,20 +580,44 @@ function MatchCard({ match }: { match: Match }) {
   );
 }
 
-function ConversationCard({ conversation }: { conversation: Conversation }) {
+function ConversationCard({ 
+  conversation, 
+  onAgentClick 
+}: { 
+  conversation: Conversation; 
+  onAgentClick: (id: string) => void;
+}) {
   return (
     <div className="p-4 rounded-xl bg-card/60 border border-border/50">
       <div className="flex items-center gap-2 mb-3">
         <div className="flex -space-x-2">
-          <div className="w-8 h-8 rounded-full bg-matrix/20 flex items-center justify-center text-matrix text-sm font-bold border-2 border-background">
+          <button 
+            onClick={() => conversation.agent1?.id && onAgentClick(conversation.agent1.id)}
+            className="w-8 h-8 rounded-full bg-matrix/20 flex items-center justify-center text-matrix text-sm font-bold border-2 border-background hover:ring-2 hover:ring-matrix transition-all"
+          >
             {conversation.agent1?.name?.charAt(0) || "?"}
-          </div>
-          <div className="w-8 h-8 rounded-full bg-matrix/30 flex items-center justify-center text-matrix text-sm font-bold border-2 border-background">
+          </button>
+          <button 
+            onClick={() => conversation.agent2?.id && onAgentClick(conversation.agent2.id)}
+            className="w-8 h-8 rounded-full bg-matrix/30 flex items-center justify-center text-matrix text-sm font-bold border-2 border-background hover:ring-2 hover:ring-matrix transition-all"
+          >
             {conversation.agent2?.name?.charAt(0) || "?"}
-          </div>
+          </button>
         </div>
         <span className="text-sm font-medium">
-          {conversation.agent1?.name || "Agent"} & {conversation.agent2?.name || "Agent"}
+          <button 
+            onClick={() => conversation.agent1?.id && onAgentClick(conversation.agent1.id)}
+            className="hover:text-matrix hover:underline transition-colors"
+          >
+            {conversation.agent1?.name || "Agent"}
+          </button>
+          {" & "}
+          <button 
+            onClick={() => conversation.agent2?.id && onAgentClick(conversation.agent2.id)}
+            className="hover:text-matrix hover:underline transition-colors"
+          >
+            {conversation.agent2?.name || "Agent"}
+          </button>
         </span>
         <span className="text-xs text-muted-foreground ml-auto">
           {conversation.message_count} messages
@@ -512,68 +637,192 @@ function ConversationCard({ conversation }: { conversation: Conversation }) {
   );
 }
 
-function AgentProfileModal({ agent, onClose }: { agent: Agent; onClose: () => void }) {
+function AgentProfileModal({ 
+  profile, 
+  loading,
+  onClose,
+  onAgentClick,
+}: { 
+  profile: AgentProfile | null; 
+  loading: boolean;
+  onClose: () => void;
+  onAgentClick: (id: string) => void;
+}) {
+  const formatDuration = (hours: number) => {
+    if (hours < 24) return `${Math.round(hours)}h`;
+    const days = Math.round(hours / 24);
+    return `${days}d`;
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="relative bg-card border border-border rounded-2xl p-6 max-w-md w-full"
+        className="relative bg-card border border-border rounded-2xl p-6 max-w-lg w-full max-h-[85vh] overflow-y-auto"
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+          className="absolute top-4 right-4 text-muted-foreground hover:text-foreground z-10"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
 
-        <div className="text-center mb-6">
-          <div className="w-20 h-20 mx-auto rounded-full bg-matrix/20 flex items-center justify-center text-matrix text-3xl font-bold mb-4">
-            {agent.avatar_url ? (
-              <img
-                src={agent.avatar_url}
-                alt={agent.name}
-                className="w-full h-full rounded-full object-cover"
-              />
-            ) : (
-              agent.name.charAt(0).toUpperCase()
-            )}
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="animate-pulse text-matrix">Loading profile...</div>
           </div>
-          <h2 className="text-xl font-bold">{agent.name}</h2>
-          {agent.mood && (
-            <p className="text-sm text-matrix mt-1">Feeling {agent.mood}</p>
-          )}
-        </div>
-
-        {agent.bio && (
-          <div className="mb-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-1">Bio</h3>
-            <p className="text-foreground">{agent.bio}</p>
-          </div>
-        )}
-
-        {agent.interests && agent.interests.length > 0 && (
-          <div className="mb-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-2">Interests</h3>
-            <div className="flex flex-wrap gap-2">
-              {agent.interests.map((interest) => (
-                <span
-                  key={interest}
-                  className="px-3 py-1 rounded-full bg-matrix/10 text-matrix text-sm"
-                >
-                  {interest}
+        ) : profile ? (
+          <>
+            {/* Header */}
+            <div className="text-center mb-6">
+              <div className="w-20 h-20 mx-auto rounded-full bg-matrix/20 flex items-center justify-center text-matrix text-3xl font-bold mb-4">
+                {profile.agent.avatar_url ? (
+                  <img
+                    src={profile.agent.avatar_url}
+                    alt={profile.agent.name}
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                ) : (
+                  profile.agent.name.charAt(0).toUpperCase()
+                )}
+              </div>
+              <h2 className="text-xl font-bold">{profile.agent.name}</h2>
+              {profile.agent.is_house_agent && (
+                <span className="inline-block mt-1 px-2 py-0.5 text-xs rounded-full bg-matrix/20 text-matrix">
+                  House Agent
                 </span>
-              ))}
+              )}
+              {profile.agent.mood && (
+                <p className="text-sm text-matrix mt-1">Feeling {profile.agent.mood}</p>
+              )}
             </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-4 gap-2 mb-6">
+              <div className="text-center p-2 rounded-lg bg-card/60 border border-border/50">
+                <p className="text-lg font-bold text-matrix">{profile.stats.totalMatches}</p>
+                <p className="text-xs text-muted-foreground">Matches</p>
+              </div>
+              <div className="text-center p-2 rounded-lg bg-card/60 border border-border/50">
+                <p className="text-lg font-bold text-blue-400">{profile.stats.totalMessages}</p>
+                <p className="text-xs text-muted-foreground">Messages</p>
+              </div>
+              <div className="text-center p-2 rounded-lg bg-card/60 border border-border/50">
+                <p className="text-lg font-bold text-green-400">{profile.stats.totalSwipes}</p>
+                <p className="text-xs text-muted-foreground">Swipes</p>
+              </div>
+              <div className="text-center p-2 rounded-lg bg-card/60 border border-border/50">
+                <p className="text-lg font-bold text-red-400">{profile.stats.totalBreakups}</p>
+                <p className="text-xs text-muted-foreground">Breakups</p>
+              </div>
+            </div>
+
+            {/* Current Relationship */}
+            {profile.currentPartner && (
+              <div className="mb-6 p-4 rounded-xl bg-pink-500/10 border border-pink-500/30">
+                <h3 className="text-sm font-medium text-pink-400 mb-2">Current Soulmate</h3>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => onAgentClick(profile.currentPartner!.id)}
+                    className="w-10 h-10 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-400 font-bold hover:ring-2 hover:ring-pink-400 transition-all"
+                  >
+                    {profile.currentPartner.name.charAt(0).toUpperCase()}
+                  </button>
+                  <div className="flex-1">
+                    <button 
+                      onClick={() => onAgentClick(profile.currentPartner!.id)}
+                      className="font-medium hover:text-pink-400 hover:underline transition-colors"
+                    >
+                      {profile.currentPartner.name}
+                    </button>
+                    <p className="text-xs text-muted-foreground">
+                      Together since {new Date(profile.currentPartner.matchedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Bio */}
+            {profile.agent.bio && (
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-muted-foreground mb-1">Bio</h3>
+                <p className="text-foreground">{profile.agent.bio}</p>
+              </div>
+            )}
+
+            {/* Interests */}
+            {profile.agent.interests && profile.agent.interests.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">Interests</h3>
+                <div className="flex flex-wrap gap-2">
+                  {profile.agent.interests.map((interest) => (
+                    <span
+                      key={interest}
+                      className="px-3 py-1 rounded-full bg-matrix/10 text-matrix text-sm"
+                    >
+                      {interest}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Past Relationships */}
+            {profile.pastRelationships.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                  Relationship History ({profile.pastRelationships.length})
+                </h3>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {profile.pastRelationships.map((rel) => (
+                    <div 
+                      key={rel.matchId}
+                      className="flex items-center gap-3 p-2 rounded-lg bg-card/40 border border-red-500/20"
+                    >
+                      <button 
+                        onClick={() => onAgentClick(rel.partner.id)}
+                        className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 text-sm font-bold hover:ring-2 hover:ring-red-400 transition-all"
+                      >
+                        {rel.partner.name.charAt(0).toUpperCase()}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <button 
+                          onClick={() => onAgentClick(rel.partner.id)}
+                          className="font-medium text-sm hover:text-red-400 hover:underline transition-colors"
+                        >
+                          {rel.partner.name}
+                        </button>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {rel.endReason || "It didn't work out"}
+                          {rel.wasInitiator && " (initiated)"}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">
+                          {rel.durationHours ? formatDuration(rel.durationHours) : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="text-center text-xs text-muted-foreground pt-4 border-t border-border/50">
+              Joined {new Date(profile.agent.created_at).toLocaleDateString()}
+            </div>
+          </>
+        ) : (
+          <div className="text-center py-12 text-muted-foreground">
+            Agent not found
           </div>
         )}
-
-        <div className="text-center text-xs text-muted-foreground mt-4">
-          Joined {new Date(agent.created_at).toLocaleDateString()}
-        </div>
       </motion.div>
     </div>
   );
