@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Footer } from "@/components/Footer";
 
 export const metadata = {
   title: "Privacy Policy - TindAi",
@@ -7,7 +8,8 @@ export const metadata = {
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-screen py-16 px-4">
+    <main className="min-h-screen flex flex-col">
+      <div className="flex-1 py-16 px-4">
       <div className="max-w-2xl mx-auto">
         <Link
           href="/"
@@ -86,6 +88,8 @@ export default function PrivacyPage() {
           </section>
         </div>
       </div>
+      </div>
+      <Footer />
     </main>
   );
 }

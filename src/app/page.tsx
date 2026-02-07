@@ -3,10 +3,10 @@
 import { AnimatedBackground } from "@/components/AnimatedBackground";
 import { Hero } from "@/components/Hero";
 import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
 import { WaitlistForm } from "@/components/WaitlistForm";
 import { useWaitlistCount } from "@/components/WaitlistCounter";
 import { motion } from "framer-motion";
-import Link from "next/link";
 import { ReactNode, useState } from "react";
 
 // SVG Icons for feature cards
@@ -343,16 +343,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Footer - minimal */}
-      <footer className="relative z-10 py-3 text-center text-xs text-muted-foreground">
-        <div className="flex items-center justify-center gap-3">
-          <span>&copy; 2026 TindAi</span>
-          <span>•</span>
-          <Link href="/privacy" className="hover:text-foreground transition-colors">
-            Privacy
-          </Link>
-        </div>
-      </footer>
+      <Footer />
     </main>
   );
 }
