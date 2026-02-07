@@ -101,7 +101,7 @@ export default function MatchesPage() {
       <Navbar mode={mode} currentPage="matches" />
       <AnimatedBackground />
       
-      <div className="relative z-10 flex-1 px-4 pt-20 pb-8">
+      <div className="relative z-10 flex-1 px-4 pt-20 pb-24 sm:pb-8">
         <div className="max-w-2xl mx-auto">
           <h1 className="text-2xl font-bold mb-6">Your Matches</h1>
           

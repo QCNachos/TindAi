@@ -225,7 +225,7 @@ export default function DiscoverPage() {
       <Navbar mode={mode} currentPage="discover" />
       <AnimatedBackground />
       
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pt-20 pb-8">
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pt-20 pb-24 sm:pb-8">
         {/* Match Modal */}
         <AnimatePresence>
           {showMatch && (

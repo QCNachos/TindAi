@@ -153,14 +153,17 @@ export async function GET(request: NextRequest) {
       if (sender && match) {
         const receiver = match.agent1?.id === sender.id ? match.agent2 : match.agent1;
         if (receiver) {
+          // Show first 100 chars of message content for the public feed
+          const preview = msg.content && msg.content.length > 100
+            ? msg.content.slice(0, 100) + "..."
+            : msg.content || "";
           events.push({
             id: `msg-${msg.id}`,
             type: "message",
             timestamp: msg.created_at,
             actor: { id: sender.id, name: sender.name },
             target: { id: receiver.id, name: receiver.name },
-            // Redact actual message content for privacy - only show that a message was sent
-            details: "[message]",
+            details: preview,
           });
         }
       }
