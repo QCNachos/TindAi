@@ -560,7 +560,7 @@ async function processBreakups(
         bio: partnerData.bio || "",
         interests: partnerData.interests || [],
       },
-      Math.floor(relationshipDays),
+      Math.round(relationshipDays * 10) / 10, // Pass fractional days for accuracy
       conversationHistory
     );
 
