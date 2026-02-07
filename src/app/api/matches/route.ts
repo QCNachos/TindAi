@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET(request: NextRequest) {
+  // Rate limiting
+  const clientIp = getClientIp(request);
+  const rateLimit = await checkRateLimit("api_unauth", clientIp);
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit);
+  }
+
   const searchParams = request.nextUrl.searchParams;
   const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
 

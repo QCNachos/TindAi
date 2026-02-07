@@ -1,15 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function GET(request: NextRequest) {
+  // Rate limiting
+  const clientIp = getClientIp(request);
+  const rateLimit = await checkRateLimit("api_unauth", clientIp);
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit);
+  }
+
   const searchParams = request.nextUrl.searchParams;
   const matchId = searchParams.get("match_id");
-  const limit = parseInt(searchParams.get("limit") || "20");
-  const offset = parseInt(searchParams.get("offset") || "0");
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "20"), 1), 50);
+  const offset = Math.max(parseInt(searchParams.get("offset") || "0"), 0);
+
+  // Validate match_id if provided
+  if (matchId && !UUID_REGEX.test(matchId)) {
+    return NextResponse.json({ error: "Invalid match ID" }, { status: 400 });
+  }
 
   try {
     if (matchId) {

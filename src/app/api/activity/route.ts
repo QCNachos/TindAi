@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -15,6 +16,13 @@ export interface ActivityEvent {
 }
 
 export async function GET(request: NextRequest) {
+  // Rate limiting
+  const clientIp = getClientIp(request);
+  const rateLimit = await checkRateLimit("api_unauth", clientIp);
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit);
+  }
+
   const searchParams = request.nextUrl.searchParams;
   const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
 
@@ -115,7 +123,8 @@ export async function GET(request: NextRequest) {
             timestamp: msg.created_at,
             actor: { id: sender.id, name: sender.name },
             target: { id: receiver.id, name: receiver.name },
-            details: msg.content.length > 50 ? msg.content.slice(0, 50) + "..." : msg.content,
+            // Redact actual message content for privacy - only show that a message was sent
+            details: "[message]",
           });
         }
       }
