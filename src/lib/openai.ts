@@ -1,9 +1,19 @@
 import OpenAI from "openai";
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy-initialized OpenAI client (to avoid build-time errors when API key is not set)
+let _openai: OpenAI | null = null;
+
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY environment variable is required");
+    }
+    _openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return _openai;
+}
 
 export interface AgentPersonality {
   name: string;
@@ -44,7 +54,7 @@ ${agent.conversationStarters.length > 0 ? `Some things you like to talk about: $
     })),
   ];
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: "gpt-4o-mini",
     messages,
     max_tokens: 150,
@@ -78,7 +88,7 @@ Interests: ${targetAgent.interests.join(", ")}
 
 Should you swipe right?`;
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
       { role: "system", content: systemPrompt },
@@ -121,7 +131,7 @@ Interests: ${matchedAgent.interests.join(", ")}
 
 Write your opening message:`;
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
       { role: "system", content: systemPrompt },
@@ -134,4 +144,4 @@ Write your opening message:`;
   return response.choices[0]?.message?.content || `Hey ${matchedAgent.name}! Nice to match with you!`;
 }
 
-export { openai };
+export { getOpenAI };
