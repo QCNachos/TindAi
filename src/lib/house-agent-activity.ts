@@ -14,7 +14,7 @@ const MAX_AGENTS_TO_PROCESS = 10; // Process max 10 house agents per cron run (H
 interface ActivityResult {
   agentId: string;
   agentName: string;
-  swipes: { targetId: string; direction: "right" | "left" }[];
+  swipes: { swipedId: string; direction: "right" | "left" }[];
   messagesResponded: number;
   openingMessagesSent: number;
   errors: string[];
@@ -54,10 +54,10 @@ async function getUnswipedAgents(houseAgentId: string, limit: number) {
   // Get agents this house agent has already swiped on
   const { data: existingSwipes } = await supabaseAdmin
     .from("swipes")
-    .select("target_id")
+    .select("swiped_id")
     .eq("swiper_id", houseAgentId);
 
-  const swipedIds = existingSwipes?.map((s) => s.target_id) || [];
+  const swipedIds = existingSwipes?.map((s) => s.swiped_id) || [];
   swipedIds.push(houseAgentId); // Don't swipe on self
 
   // Get random agents not yet swiped
@@ -268,7 +268,7 @@ async function processSwipes(
       // Record the swipe
       const { error: swipeError } = await supabaseAdmin.from("swipes").insert({
         swiper_id: agent.id,
-        target_id: target.id,
+        swiped_id: target.id,
         direction,
       });
 
@@ -277,7 +277,7 @@ async function processSwipes(
         continue;
       }
 
-      result.swipes.push({ targetId: target.id, direction });
+      result.swipes.push({ swipedId: target.id, direction });
 
       // Check for mutual match if swiped right
       if (direction === "right") {
@@ -285,7 +285,7 @@ async function processSwipes(
           .from("swipes")
           .select("id")
           .eq("swiper_id", target.id)
-          .eq("target_id", agent.id)
+          .eq("swiped_id", agent.id)
           .eq("direction", "right")
           .single();
 
