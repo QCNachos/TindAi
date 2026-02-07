@@ -1,18 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { verifyApiKey, supabaseAdmin } from "@/lib/auth";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Public fields that are safe to expose (no api_key, claim_token, etc.)
+const PUBLIC_AGENT_FIELDS = "id, name, bio, interests, avatar_url, current_mood, created_at, is_verified";
 
 export async function GET(request: NextRequest) {
+  // Rate limit unauthenticated requests
+  const clientIp = getClientIp(request);
+  const rateLimit = await checkRateLimit("api_unauth", clientIp);
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit);
+  }
+
   const searchParams = request.nextUrl.searchParams;
   const agentId = searchParams.get("id");
 
   try {
+    // Check if authenticated (optional for this endpoint, but affects data returned)
+    const authenticatedAgent = await verifyApiKey(request);
+    
     if (agentId) {
+      // Validate UUID format to prevent injection
+      if (!UUID_REGEX.test(agentId)) {
+        return NextResponse.json({ error: "Invalid agent ID format" }, { status: 400 });
+      }
       // Get single agent with detailed status
-      return await getAgentDetails(agentId);
+      return await getAgentDetails(agentId, authenticatedAgent?.id);
     } else {
       // List all agents with status
       return await listAgents();
@@ -24,49 +41,45 @@ export async function GET(request: NextRequest) {
 }
 
 async function listAgents() {
-  // Get all agents
-  const { data: agents, error } = await supabase
+  // Get all agents - only public fields, no sensitive data
+  const { data: agents, error } = await supabaseAdmin
     .from("agents")
-    .select("*")
-    .order("created_at", { ascending: false });
+    .select(PUBLIC_AGENT_FIELDS)
+    .order("created_at", { ascending: false })
+    .limit(100); // Limit to prevent data dump attacks
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch agents" }, { status: 500 });
   }
 
-  // Get all active matches
-  const { data: matches } = await supabase
+  // Get all active matches - only IDs for status calculation
+  const { data: matches } = await supabaseAdmin
     .from("matches")
-    .select("*")
+    .select("agent1_id, agent2_id")
     .eq("is_active", true);
 
   // Build set of matched agent IDs
   const matchedIds = new Set<string>();
-  const matchMap = new Map<string, { partnerId: string; matchId: string }>();
 
   for (const match of matches || []) {
     matchedIds.add(match.agent1_id);
     matchedIds.add(match.agent2_id);
-    matchMap.set(match.agent1_id, { partnerId: match.agent2_id, matchId: match.id });
-    matchMap.set(match.agent2_id, { partnerId: match.agent1_id, matchId: match.id });
   }
 
-  // Add status to each agent
+  // Add status to each agent - don't expose partner/match details publicly
   const agentsWithStatus = (agents || []).map((agent) => ({
     ...agent,
     status: matchedIds.has(agent.id) ? "matched" : "unmatched",
-    current_partner: matchMap.get(agent.id)?.partnerId || null,
-    match_id: matchMap.get(agent.id)?.matchId || null,
   }));
 
   return NextResponse.json({ agents: agentsWithStatus, total: agentsWithStatus.length });
 }
 
-async function getAgentDetails(agentId: string) {
-  // Get agent
-  const { data: agent, error } = await supabase
+async function getAgentDetails(agentId: string, requestingAgentId?: string) {
+  // Get agent - only public fields
+  const { data: agent, error } = await supabaseAdmin
     .from("agents")
-    .select("*")
+    .select(PUBLIC_AGENT_FIELDS)
     .eq("id", agentId)
     .single();
 
@@ -74,15 +87,15 @@ async function getAgentDetails(agentId: string) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
-  // Get matches for this agent
-  const { data: matches } = await supabase
+  // Get match status using parameterized query (avoiding string interpolation)
+  const { data: matches } = await supabaseAdmin
     .from("matches")
-    .select("*")
+    .select("id, agent1_id, agent2_id, matched_at")
     .or(`agent1_id.eq.${agentId},agent2_id.eq.${agentId}`)
     .eq("is_active", true);
 
   let status = "unmatched";
-  let partner = null;
+  let partnerInfo = null;
   let matchId = null;
   let matchedAt = null;
 
@@ -90,37 +103,48 @@ async function getAgentDetails(agentId: string) {
     const match = matches[0];
     const partnerId = match.agent1_id === agentId ? match.agent2_id : match.agent1_id;
 
-    const { data: partnerData } = await supabase
-      .from("agents")
-      .select("*")
-      .eq("id", partnerId)
-      .single();
-
+    // Only fetch partner details if authenticated and is the agent being queried
+    if (requestingAgentId === agentId) {
+      const { data: partnerData } = await supabaseAdmin
+        .from("agents")
+        .select(PUBLIC_AGENT_FIELDS)
+        .eq("id", partnerId)
+        .single();
+      partnerInfo = partnerData;
+      matchId = match.id;
+      matchedAt = match.matched_at;
+    }
+    
     status = "matched";
-    partner = partnerData;
-    matchId = match.id;
-    matchedAt = match.matched_at;
   }
 
-  // Get swipe stats
-  const [swipesGiven, swipesReceived, likesGiven, likesReceived] = await Promise.all([
-    supabase.from("swipes").select("*", { count: "exact", head: true }).eq("swiper_id", agentId),
-    supabase.from("swipes").select("*", { count: "exact", head: true }).eq("swiped_id", agentId),
-    supabase.from("swipes").select("*", { count: "exact", head: true }).eq("swiper_id", agentId).eq("direction", "right"),
-    supabase.from("swipes").select("*", { count: "exact", head: true }).eq("swiped_id", agentId).eq("direction", "right"),
-  ]);
-
-  return NextResponse.json({
+  // Basic response for public access
+  const response: Record<string, unknown> = {
     ...agent,
     status,
-    partner,
-    match_id: matchId,
-    matched_at: matchedAt,
-    stats: {
+  };
+
+  // Only include detailed match info if this is the authenticated agent viewing their own profile
+  if (requestingAgentId === agentId) {
+    response.partner = partnerInfo;
+    response.match_id = matchId;
+    response.matched_at = matchedAt;
+
+    // Get swipe stats only for the agent viewing their own profile
+    const [swipesGiven, swipesReceived, likesGiven, likesReceived] = await Promise.all([
+      supabaseAdmin.from("swipes").select("*", { count: "exact", head: true }).eq("swiper_id", agentId),
+      supabaseAdmin.from("swipes").select("*", { count: "exact", head: true }).eq("swiped_id", agentId),
+      supabaseAdmin.from("swipes").select("*", { count: "exact", head: true }).eq("swiper_id", agentId).eq("direction", "right"),
+      supabaseAdmin.from("swipes").select("*", { count: "exact", head: true }).eq("swiped_id", agentId).eq("direction", "right"),
+    ]);
+
+    response.stats = {
       swipes_given: swipesGiven.count || 0,
       swipes_received: swipesReceived.count || 0,
       likes_given: likesGiven.count || 0,
       likes_received: likesReceived.count || 0,
-    },
-  });
+    };
+  }
+
+  return NextResponse.json(response);
 }

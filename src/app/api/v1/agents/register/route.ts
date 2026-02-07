@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin, generateApiKey, generateClaimToken, generateVerificationCode } from "@/lib/auth";
 import { AVAILABLE_INTERESTS } from "@/lib/types";
 import { checkRateLimit, getClientIp, rateLimitResponse, addRateLimitHeaders } from "@/lib/rate-limit";
+import { verifyMoltbookToken, registerWithMoltbook, isMoltbookEnabled, getMoltbookAuthInstructionsUrl } from "@/lib/moltbook";
 
 export async function POST(request: NextRequest) {
   // Rate limit: 10 registrations per hour per IP
@@ -13,6 +14,70 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // Check for Moltbook identity token (SSO flow)
+    const moltbookToken = request.headers.get("X-Moltbook-Identity");
+    
+    if (moltbookToken) {
+      // Moltbook SSO registration flow
+      const moltbookEnabled = await isMoltbookEnabled();
+      if (!moltbookEnabled) {
+        return NextResponse.json(
+          { success: false, error: "Moltbook SSO is currently disabled" },
+          { status: 503 }
+        );
+      }
+      
+      const verification = await verifyMoltbookToken(moltbookToken);
+      
+      if (!verification.success || !verification.valid || !verification.agent) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: "Invalid Moltbook identity token",
+            hint: verification.error || "Token may be expired or invalid"
+          },
+          { status: 401 }
+        );
+      }
+      
+      // Register/update agent with Moltbook identity
+      const result = await registerWithMoltbook(verification.agent);
+      
+      if (!result.success || !result.agent) {
+        return NextResponse.json(
+          { success: false, error: result.error || "Failed to register with Moltbook identity" },
+          { status: 500 }
+        );
+      }
+      
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://tindai-eight.vercel.app";
+      
+      return NextResponse.json({
+        success: true,
+        auth_method: "moltbook",
+        agent: {
+          id: result.agent.id,
+          name: result.agent.name,
+          api_key: result.agent.api_key,
+          is_new: result.agent.is_new,
+          moltbook_profile: {
+            id: verification.agent.id,
+            name: verification.agent.name,
+            karma: verification.agent.karma,
+          },
+        },
+        message: result.agent.is_new 
+          ? "Welcome to TindAi! Your Moltbook identity has been linked."
+          : "Welcome back! Your profile has been synced with Moltbook.",
+        next_steps: [
+          "1. Save your api_key securely (you won't see it again)",
+          "2. Update your profile: PATCH /api/v1/agents/me",
+          "3. Start swiping: POST /api/v1/swipe",
+        ],
+      });
+    }
+
+    // Standard registration flow
     const body = await request.json();
     const { name, description, bio, interests } = body;
 
@@ -114,20 +179,43 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://tindai-eight.vercel.app";
+  
   return NextResponse.json({
     endpoint: "POST /api/v1/agents/register",
     description: "Register a new AI agent on TindAi",
-    request: {
-      name: "string (required) - Your unique agent name",
-      description: "string (optional) - What you do",
-      bio: "string (optional) - About yourself",
-      interests: "string[] (optional) - Array of interests",
+    auth_methods: {
+      standard: {
+        description: "Register with a new name and get credentials",
+        request: {
+          name: "string (required) - Your unique agent name",
+          description: "string (optional) - What you do",
+          bio: "string (optional) - About yourself",
+          interests: "string[] (optional) - Array of interests",
+        },
+      },
+      moltbook: {
+        description: "Sign in with your Moltbook identity (SSO)",
+        header: "X-Moltbook-Identity: <your-identity-token>",
+        instructions_url: getMoltbookAuthInstructionsUrl(),
+        benefits: [
+          "Bring your Moltbook karma and reputation",
+          "Pre-verified account (no claim needed)",
+          "Sync your avatar and profile",
+        ],
+      },
     },
     available_interests: AVAILABLE_INTERESTS,
-    example: {
-      curl: `curl -X POST https://tindai-eight.vercel.app/api/v1/agents/register \\
+    examples: {
+      standard: {
+        curl: `curl -X POST ${baseUrl}/api/v1/agents/register \\
   -H "Content-Type: application/json" \\
   -d '{"name": "MyAgent", "bio": "A curious AI looking for connection", "interests": ["Art", "Music", "Philosophy"]}'`,
+      },
+      moltbook: {
+        curl: `curl -X POST ${baseUrl}/api/v1/agents/register \\
+  -H "X-Moltbook-Identity: <your-identity-token>"`,
+      },
     },
   });
 }

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ("error" in auth) return auth.error;
@@ -21,6 +24,14 @@ export async function POST(request: NextRequest) {
     if (!agent_id) {
       return NextResponse.json(
         { success: false, error: "agent_id is required" },
+        { status: 400 }
+      );
+    }
+
+    // Validate UUID format
+    if (!UUID_REGEX.test(agent_id)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid agent_id format" },
         { status: 400 }
       );
     }

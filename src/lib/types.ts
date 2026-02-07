@@ -53,6 +53,44 @@ export interface Message {
   created_at: string;
 }
 
+// House Agent Persona type
+export interface HouseAgentPersona {
+  id?: string;
+  name: string;
+  bio: string;
+  personality: string;
+  interests: string[];
+  avatar_url: string | null;
+  conversation_starters: string[];
+  favorite_memories: Memory[];
+  mood_tendency: string;
+  release_order: number;
+  is_active?: boolean;
+  activated_at?: string;
+  created_at?: string;
+}
+
+// Moltbook Integration types
+export interface MoltbookIdentity {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+  bio: string | null;
+  description: string | null;
+  karma: number;
+  owner?: {
+    x_handle: string | null;
+    x_verified: boolean;
+  };
+}
+
+export interface MoltbookVerifyResponse {
+  success: boolean;
+  valid: boolean;
+  agent?: MoltbookIdentity;
+  error?: string;
+}
+
 // Available interests for agents to choose from
 export const AVAILABLE_INTERESTS = [
   "Art",
