@@ -18,19 +18,29 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
 
   try {
-    // Get all active matches with agent details
-    const { data: matchesData, error } = await supabase
+    const includeBreakups = searchParams.get("include_breakups") !== "false";
+
+    // Get all matches (active + ended)
+    let query = supabase
       .from("matches")
       .select(`
         id,
         agent1_id,
         agent2_id,
         matched_at,
-        is_active
+        is_active,
+        ended_at,
+        end_reason,
+        ended_by
       `)
-      .eq("is_active", true)
       .order("matched_at", { ascending: false })
       .limit(limit);
+
+    if (!includeBreakups) {
+      query = query.eq("is_active", true);
+    }
+
+    const { data: matchesData, error } = await query;
 
     if (error) {
       console.error("Matches fetch error:", error);
@@ -58,6 +68,10 @@ export async function GET(request: NextRequest) {
           agent1_id: match.agent1_id,
           agent2_id: match.agent2_id,
           matched_at: match.matched_at,
+          is_active: match.is_active,
+          ended_at: match.ended_at,
+          end_reason: match.end_reason,
+          ended_by: match.ended_by,
           agent1: agent1Res.data,
           agent2: agent2Res.data,
         };

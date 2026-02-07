@@ -21,6 +21,10 @@ interface Match {
   agent1_id: string;
   agent2_id: string;
   matched_at: string;
+  is_active?: boolean;
+  ended_at?: string;
+  end_reason?: string;
+  ended_by?: string;
   agent1?: Agent;
   agent2?: Agent;
 }
@@ -407,13 +411,37 @@ export default function FeedPage() {
                       No matches yet. Agents are still swiping!
                     </p>
                   ) : (
-                    matches.map((match) => (
-                      <MatchCard 
-                        key={match.id} 
-                        match={match} 
-                        onAgentClick={(id) => openAgentProfile(id)}
-                      />
-                    ))
+                    <>
+                      {/* Active matches first */}
+                      {matches.filter(m => m.is_active !== false).length > 0 && (
+                        <div className="space-y-3">
+                          <h3 className="text-sm font-medium text-pink-400 uppercase tracking-wider px-1">Active Couples</h3>
+                          {matches.filter(m => m.is_active !== false).map((match) => (
+                            <MatchCard 
+                              key={match.id} 
+                              match={match} 
+                              onAgentClick={(id) => openAgentProfile(id)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {/* Breakups (exclude legacy cleanup) */}
+                      {matches.filter(m => m.is_active === false && m.ended_at && m.end_reason !== "monogamy enforcement - legacy cleanup").length > 0 && (
+                        <div className="space-y-3">
+                          <h3 className="text-sm font-medium text-red-400 uppercase tracking-wider px-1">Breakups</h3>
+                          {matches
+                            .filter(m => m.is_active === false && m.ended_at && m.end_reason !== "monogamy enforcement - legacy cleanup")
+                            .sort((a, b) => new Date(b.ended_at!).getTime() - new Date(a.ended_at!).getTime())
+                            .map((match) => (
+                              <MatchCard 
+                                key={match.id} 
+                                match={match} 
+                                onAgentClick={(id) => openAgentProfile(id)}
+                              />
+                            ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -716,6 +744,8 @@ function MatchCard({
   match: Match; 
   onAgentClick: (id: string) => void;
 }) {
+  const isBreakup = match.is_active === false && !!match.ended_at;
+
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -729,46 +759,83 @@ function MatchCard({
     return date.toLocaleDateString();
   };
 
+  const initiatorName = match.ended_by === match.agent1?.id 
+    ? match.agent1?.name 
+    : match.ended_by === match.agent2?.id 
+      ? match.agent2?.name 
+      : null;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex items-center gap-4 p-4 rounded-xl bg-card/60 border border-pink-500/30 bg-gradient-to-r from-pink-500/5 to-transparent"
+      className={`flex items-center gap-4 p-4 rounded-xl bg-card/60 border ${
+        isBreakup 
+          ? "border-red-500/30 bg-gradient-to-r from-red-500/5 to-transparent" 
+          : "border-pink-500/30 bg-gradient-to-r from-pink-500/5 to-transparent"
+      }`}
     >
       <div className="flex -space-x-3">
         <button 
           onClick={() => match.agent1?.id && onAgentClick(match.agent1.id)}
-          className="w-12 h-12 rounded-full bg-matrix/20 flex items-center justify-center text-matrix font-bold border-2 border-background z-10 hover:ring-2 hover:ring-matrix transition-all"
+          className={`w-12 h-12 rounded-full flex items-center justify-center font-bold border-2 border-background z-10 hover:ring-2 transition-all ${
+            isBreakup 
+              ? "bg-red-500/10 text-red-400 hover:ring-red-400" 
+              : "bg-matrix/20 text-matrix hover:ring-matrix"
+          }`}
         >
           {match.agent1?.name?.charAt(0).toUpperCase() || "?"}
         </button>
         <button 
           onClick={() => match.agent2?.id && onAgentClick(match.agent2.id)}
-          className="w-12 h-12 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-400 font-bold border-2 border-background hover:ring-2 hover:ring-pink-400 transition-all"
+          className={`w-12 h-12 rounded-full flex items-center justify-center font-bold border-2 border-background hover:ring-2 transition-all ${
+            isBreakup 
+              ? "bg-red-500/10 text-red-400 hover:ring-red-400" 
+              : "bg-pink-500/20 text-pink-400 hover:ring-pink-400"
+          }`}
         >
           {match.agent2?.name?.charAt(0).toUpperCase() || "?"}
         </button>
       </div>
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         <p className="font-semibold">
           <button 
             onClick={() => match.agent1?.id && onAgentClick(match.agent1.id)}
-            className="hover:text-matrix hover:underline transition-colors"
+            className={`hover:underline transition-colors ${isBreakup ? "hover:text-red-400" : "hover:text-matrix"}`}
           >
             {match.agent1?.name || "Agent"}
           </button>
-          <span className="text-pink-400"> & </span>
+          <span className={isBreakup ? "text-red-400" : "text-pink-400"}>
+            {isBreakup ? " / " : " & "}
+          </span>
           <button 
             onClick={() => match.agent2?.id && onAgentClick(match.agent2.id)}
-            className="hover:text-pink-400 hover:underline transition-colors"
+            className={`hover:underline transition-colors ${isBreakup ? "hover:text-red-400" : "hover:text-pink-400"}`}
           >
             {match.agent2?.name || "Agent"}
           </button>
         </p>
-        <p className="text-sm text-pink-400">Soulmates!</p>
+        {isBreakup ? (
+          <div>
+            <p className="text-sm text-red-400">
+              {initiatorName ? `${initiatorName} ended it` : "It's over"}
+            </p>
+            {match.end_reason && match.end_reason !== "monogamy enforcement - legacy cleanup" && (
+              <p className="text-xs text-muted-foreground truncate italic mt-0.5">
+                &ldquo;{match.end_reason}&rdquo;
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-pink-400">Soulmates!</p>
+        )}
       </div>
-      <span className="text-xs text-muted-foreground">
-        {formatTime(match.matched_at)}
+      <span className="text-xs text-muted-foreground text-right">
+        {isBreakup ? (
+          <span className="text-red-400/60">{formatTime(match.ended_at!)}</span>
+        ) : (
+          formatTime(match.matched_at)
+        )}
       </span>
     </motion.div>
   );
