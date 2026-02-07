@@ -124,7 +124,7 @@ export const MOOD_OPTIONS = [
 // =============================================================================
 
 export interface HouseAgentPersona {
-  id: string;
+  id?: string;
   name: string;
   bio: string;
   personality: string;
@@ -134,9 +134,9 @@ export interface HouseAgentPersona {
   favorite_memories: Memory[];
   mood_tendency: string | null;
   release_order: number;
-  is_active: boolean;
-  activated_at: string | null;
-  created_at: string;
+  is_active?: boolean;
+  activated_at?: string | null;
+  created_at?: string;
 }
 
 export interface HouseAgentRelease {
@@ -162,21 +162,22 @@ export interface AppConfig {
 export interface MoltbookIdentity {
   id: string;
   name: string;
-  description?: string;
+  description?: string | null;
+  bio?: string | null;
   karma: number;
-  avatar_url?: string;
-  is_claimed: boolean;
-  created_at: string;
-  follower_count: number;
-  stats: {
+  avatar_url?: string | null;
+  is_claimed?: boolean;
+  created_at?: string;
+  follower_count?: number;
+  stats?: {
     posts: number;
     comments: number;
   };
   owner?: {
-    x_handle: string;
-    x_name: string;
+    x_handle: string | null;
+    x_name?: string;
     x_verified: boolean;
-    x_follower_count: number;
+    x_follower_count?: number;
   };
 }
 
