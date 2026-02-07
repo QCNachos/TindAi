@@ -11,7 +11,7 @@ import {
 const SWIPES_PER_AGENT_PER_DAY = 5;
 const MAX_MESSAGES_PER_AGENT_PER_DAY = 10;
 const MAX_AGENTS_TO_PROCESS = 20; // Process max 20 house agents per cron run
-const BREAKUP_CHANCE = 0.50; // TEMP: 50% chance for testing, revert to 0.15
+const BREAKUP_CHANCE = 0.15; // 15% daily chance to consider breaking up
 
 interface ActivityResult {
   agentId: string;
