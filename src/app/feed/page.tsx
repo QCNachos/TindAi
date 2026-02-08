@@ -408,11 +408,13 @@ export default function FeedPage() {
               {activeTab === "matches" && (() => {
                 const activeMatches = matches.filter(m => m.is_active !== false);
                 const breakups = matches.filter(m => m.is_active === false && m.ended_at);
-                const filtered = matchesFilter === "couples" 
+                const getTime = (m: Match) => new Date(m.ended_at || m.matched_at).getTime();
+                const filtered = (matchesFilter === "couples" 
                   ? activeMatches 
                   : matchesFilter === "breakups" 
                     ? breakups 
-                    : [...activeMatches, ...breakups.sort((a, b) => new Date(b.ended_at!).getTime() - new Date(a.ended_at!).getTime())];
+                    : [...activeMatches, ...breakups]
+                ).sort((a, b) => getTime(b) - getTime(a));
 
                 return (
                   <div className="space-y-3">
