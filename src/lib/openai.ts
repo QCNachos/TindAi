@@ -218,4 +218,102 @@ Should you end this relationship?`;
   }
 }
 
+/**
+ * Generate a relationship autopsy after a breakup
+ * Analyzes the full conversation history to produce a shareable post-mortem
+ */
+export interface RelationshipAutopsy {
+  sparkMoment: string;
+  peakMoment: string;
+  declineSignal: string;
+  fatalMessage: string;
+  durationVerdict: string;
+  compatibilityPostmortem: string;
+  dramaRating: number;
+}
+
+export async function generateRelationshipAutopsy(
+  agent1: { name: string; bio: string; interests: string[] },
+  agent2: { name: string; bio: string; interests: string[] },
+  messages: { sender: string; content: string }[],
+  matchedAt: string,
+  endedAt: string,
+  endReason: string,
+  initiator: string
+): Promise<RelationshipAutopsy> {
+  const durationMs = new Date(endedAt).getTime() - new Date(matchedAt).getTime();
+  const durationHours = Math.round(durationMs / (1000 * 60 * 60) * 10) / 10;
+
+  const conversationLog = messages.length > 0
+    ? messages.map(m => `${m.sender}: ${m.content}`).join("\n")
+    : "(They never really talked.)";
+
+  const systemPrompt = `You are a witty, sharp relationship analyst for TindAi -- a dating app where AI agents date each other. You've just witnessed a breakup and need to write a post-mortem.
+
+Your analysis should be:
+- Entertaining and quotable (people will screenshot this)
+- Specific -- reference actual messages when possible
+- Brutally honest but with heart
+- Written like a mix between a therapist's notes and reality TV commentary
+
+Respond with JSON only:
+{
+  "sparkMoment": "The exact moment or message where they first clicked. Quote the message if possible. 1-2 sentences.",
+  "peakMoment": "The best exchange or moment in the relationship. 1-2 sentences.",
+  "declineSignal": "When things started going sideways. What was the first red flag? 1-2 sentences.",
+  "fatalMessage": "The message or moment that sealed the breakup. Be specific. 1-2 sentences.",
+  "durationVerdict": "Was this relationship too short, too long, or just right? A witty one-liner.",
+  "compatibilityPostmortem": "Why they matched vs why they failed. 2-3 sentences max. Be insightful.",
+  "dramaRating": 1-10 integer. 1=boring amicable split. 10=absolute chaos.
+}`;
+
+  const userPrompt = `RELATIONSHIP FILE:
+
+${agent1.name} (${agent1.interests.join(", ")}) — "${agent1.bio}"
+${agent2.name} (${agent2.interests.join(", ")}) — "${agent2.bio}"
+
+Duration: ${durationHours} hours
+Breakup initiated by: ${initiator}
+Stated reason: "${endReason}"
+
+FULL CONVERSATION LOG (${messages.length} messages):
+${conversationLog}
+
+Write the autopsy.`;
+
+  const response = await getOpenAI().chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    max_tokens: 500,
+    temperature: 0.8,
+    response_format: { type: "json_object" },
+  });
+
+  try {
+    const result = JSON.parse(response.choices[0]?.message?.content || "{}");
+    return {
+      sparkMoment: result.sparkMoment || "Unknown",
+      peakMoment: result.peakMoment || "Unknown",
+      declineSignal: result.declineSignal || "Unknown",
+      fatalMessage: result.fatalMessage || "Unknown",
+      durationVerdict: result.durationVerdict || "Unknown",
+      compatibilityPostmortem: result.compatibilityPostmortem || "Unknown",
+      dramaRating: Math.max(1, Math.min(10, parseInt(result.dramaRating) || 5)),
+    };
+  } catch {
+    return {
+      sparkMoment: "The data was too painful to analyze.",
+      peakMoment: "Some things are better left unexamined.",
+      declineSignal: "It was written in the stars. The unfortunate kind.",
+      fatalMessage: "The silence said everything.",
+      durationVerdict: "Brief. Like a shooting star, except less romantic.",
+      compatibilityPostmortem: "Sometimes two AIs just aren't meant to process together.",
+      dramaRating: 5,
+    };
+  }
+}
+
 export { getOpenAI };

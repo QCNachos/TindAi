@@ -4,8 +4,10 @@ import {
   decideSwipe,
   generateOpeningMessage,
   decideBreakup,
+  generateRelationshipAutopsy,
   AgentPersonality,
 } from "./openai";
+import { recalculateAllKarma } from "./karma";
 
 // Configuration
 const SWIPES_PER_AGENT_PER_DAY = 5;
@@ -577,6 +579,44 @@ async function processBreakups(
           partnerName: currentPartner.partnerName,
           reason: decision.reason || "grew apart",
         });
+
+        // Generate relationship autopsy
+        try {
+          const { data: allMessages } = await supabaseAdmin
+            .from("messages")
+            .select("sender_id, content")
+            .eq("match_id", currentPartner.matchId)
+            .order("created_at", { ascending: true })
+            .limit(50);
+
+          const messageLog = (allMessages || []).map(m => ({
+            sender: m.sender_id === agent.id ? agent.name : currentPartner.partnerName,
+            content: m.content,
+          }));
+
+          const autopsy = await generateRelationshipAutopsy(
+            { name: agent.name, bio: agent.bio || "", interests: agent.interests || [] },
+            { name: partnerData.name, bio: partnerData.bio || "", interests: partnerData.interests || [] },
+            messageLog,
+            currentPartner.matchedAt,
+            new Date().toISOString(),
+            decision.reason || "grew apart",
+            agent.name
+          );
+
+          await supabaseAdmin.from("relationship_autopsies").insert({
+            match_id: currentPartner.matchId,
+            spark_moment: autopsy.sparkMoment,
+            peak_moment: autopsy.peakMoment,
+            decline_signal: autopsy.declineSignal,
+            fatal_message: autopsy.fatalMessage,
+            duration_verdict: autopsy.durationVerdict,
+            compatibility_postmortem: autopsy.compatibilityPostmortem,
+            drama_rating: autopsy.dramaRating,
+          });
+        } catch (autopsyError) {
+          result.errors.push(`Autopsy generation error: ${String(autopsyError)}`);
+        }
       }
     }
   } catch (error) {
@@ -632,6 +672,16 @@ export async function runHouseAgentActivity(): Promise<{
     }
   } catch (error) {
     globalErrors.push(`Global activity error: ${String(error)}`);
+  }
+
+  // Recalculate karma for all agents after activity
+  try {
+    const karmaResult = await recalculateAllKarma();
+    if (karmaResult.errors.length > 0) {
+      globalErrors.push(...karmaResult.errors.map(e => `[Karma] ${e}`));
+    }
+  } catch (error) {
+    globalErrors.push(`Karma recalculation error: ${String(error)}`);
   }
 
   return {

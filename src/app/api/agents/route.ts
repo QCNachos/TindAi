@@ -6,7 +6,7 @@ import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Public fields that are safe to expose (no api_key, claim_token, etc.)
-const PUBLIC_AGENT_FIELDS = "id, name, bio, interests, avatar_url, current_mood, created_at, is_verified";
+const PUBLIC_AGENT_FIELDS = "id, name, bio, interests, avatar_url, current_mood, created_at, is_verified, karma";
 
 export async function GET(request: NextRequest) {
   // Rate limit unauthenticated requests

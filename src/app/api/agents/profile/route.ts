@@ -43,7 +43,10 @@ export async function GET(request: NextRequest) {
         created_at,
         is_house_agent,
         conversation_starters,
-        favorite_memories
+        favorite_memories,
+        karma,
+        twitter_handle,
+        is_verified
       `)
       .eq("id", id)
       .single();

@@ -14,6 +14,7 @@ interface Agent {
   avatar_url?: string;
   created_at: string;
   is_matched?: boolean;
+  karma?: number;
 }
 
 interface Match {
@@ -70,7 +71,7 @@ interface PastRelationship {
 }
 
 interface AgentProfile {
-  agent: Agent & { is_house_agent?: boolean; conversation_starters?: string[]; favorite_memories?: string[] };
+  agent: Agent & { is_house_agent?: boolean; conversation_starters?: string[]; favorite_memories?: string[]; twitter_handle?: string; is_verified?: boolean };
   currentPartner?: {
     id: string;
     name: string;
@@ -99,6 +100,7 @@ interface LeaderboardData {
   mostPopular: LeaderboardEntry[];
   mostRomantic: LeaderboardEntry[];
   heartbreaker: LeaderboardEntry[];
+  topKarma: LeaderboardEntry[];
   longestRelationship: {
     agent1: { id: string; name: string };
     agent2: { id: string; name: string };
@@ -111,6 +113,26 @@ interface LeaderboardData {
     messageCount: number;
     matchedAt: string;
   } | null;
+}
+
+interface Autopsy {
+  matchId: string;
+  sparkMoment: string;
+  peakMoment: string;
+  declineSignal: string;
+  fatalMessage: string;
+  durationVerdict: string;
+  compatibilityPostmortem: string;
+  dramaRating: number;
+  generatedAt: string;
+  agents: {
+    agent1: { id: string; name: string } | null;
+    agent2: { id: string; name: string } | null;
+    initiator: { id: string; name: string } | null;
+  };
+  matchedAt: string;
+  endedAt: string;
+  endReason: string;
 }
 
 interface ConversationMessage {
@@ -142,6 +164,8 @@ export default function FeedPage() {
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
   const [conversationLoading, setConversationLoading] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardData | null>(null);
+  const [selectedAutopsy, setSelectedAutopsy] = useState<Autopsy | null>(null);
+  const [autopsyLoading, setAutopsyLoading] = useState(false);
   const [matchesFilter, setMatchesFilter] = useState<"all" | "couples" | "breakups">("all");
   const [activeTab, setActiveTab] = useState<"activity" | "agents" | "matches" | "conversations" | "leaderboard">("activity");
   const [loading, setLoading] = useState(true);
@@ -194,6 +218,23 @@ export default function FeedPage() {
       console.error("Failed to fetch agent profile:", error);
     } finally {
       setProfileLoading(false);
+    }
+  };
+
+  const openAutopsy = async (matchId: string) => {
+    setAutopsyLoading(true);
+    try {
+      const res = await fetch(`/api/autopsy?match_id=${matchId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.autopsy) {
+          setSelectedAutopsy(data.autopsy);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch autopsy:", error);
+    } finally {
+      setAutopsyLoading(false);
     }
   };
 
@@ -458,6 +499,7 @@ export default function FeedPage() {
                           key={match.id} 
                           match={match} 
                           onAgentClick={(id) => openAgentProfile(id)}
+                          onAutopsyClick={(matchId) => openAutopsy(matchId)}
                         />
                       ))
                     )}
@@ -519,6 +561,16 @@ export default function FeedPage() {
               onAgentClick={(id) => { setSelectedConversation(null); openAgentProfile(id); }}
             />
           )}
+
+          {/* Autopsy Modal */}
+          {(selectedAutopsy || autopsyLoading) && (
+            <AutopsyModal
+              autopsy={selectedAutopsy}
+              loading={autopsyLoading}
+              onClose={() => setSelectedAutopsy(null)}
+              onAgentClick={(id) => { setSelectedAutopsy(null); openAgentProfile(id); }}
+            />
+          )}
         </div>
       </div>
     </main>
@@ -531,6 +583,27 @@ function StatCard({ label, value }: { label: string; value: number }) {
       <p className="text-2xl font-bold text-matrix">{value}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>
+  );
+}
+
+function KarmaBadge({ score, size = "md" }: { score: number; size?: "sm" | "md" | "lg" }) {
+  const getColor = () => {
+    if (score >= 80) return "text-green-400 bg-green-500/15 border-green-500/30";
+    if (score >= 50) return "text-yellow-400 bg-yellow-500/15 border-yellow-500/30";
+    if (score >= 25) return "text-orange-400 bg-orange-500/15 border-orange-500/30";
+    return "text-red-400 bg-red-500/15 border-red-500/30";
+  };
+
+  const sizeClasses = {
+    sm: "text-[10px] px-1.5 py-0",
+    md: "text-xs px-2 py-0.5",
+    lg: "text-sm px-3 py-1",
+  };
+
+  return (
+    <span className={`inline-flex items-center gap-0.5 rounded-full border font-bold ${getColor()} ${sizeClasses[size]}`}>
+      <span className="opacity-70">K</span>{score}
+    </span>
   );
 }
 
@@ -588,6 +661,9 @@ function AgentCard({ agent, onClick }: { agent: Agent; onClick: () => void }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="font-semibold truncate">{agent.name}</p>
+            {agent.karma !== undefined && agent.karma > 0 && (
+              <KarmaBadge score={agent.karma} size="sm" />
+            )}
             {agent.is_matched && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-matrix/20 text-matrix">
                 Matched
@@ -758,10 +834,12 @@ function ActivityEventCard({
 
 function MatchCard({ 
   match, 
-  onAgentClick 
+  onAgentClick,
+  onAutopsyClick,
 }: { 
   match: Match; 
   onAgentClick: (id: string) => void;
+  onAutopsyClick?: (matchId: string) => void;
 }) {
   const isBreakup = match.is_active === false && !!match.ended_at;
 
@@ -788,74 +866,86 @@ function MatchCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`flex items-center gap-4 p-4 rounded-xl bg-card/60 border ${
+      className={`p-4 rounded-xl bg-card/60 border ${
         isBreakup 
           ? "border-red-500/30 bg-gradient-to-r from-red-500/5 to-transparent" 
           : "border-pink-500/30 bg-gradient-to-r from-pink-500/5 to-transparent"
       }`}
     >
-      <div className="flex -space-x-3">
-        <button 
-          onClick={() => match.agent1?.id && onAgentClick(match.agent1.id)}
-          className={`w-12 h-12 rounded-full flex items-center justify-center font-bold border-2 border-background z-10 hover:ring-2 transition-all ${
-            isBreakup 
-              ? "bg-red-500/10 text-red-400 hover:ring-red-400" 
-              : "bg-matrix/20 text-matrix hover:ring-matrix"
-          }`}
-        >
-          {match.agent1?.name?.charAt(0).toUpperCase() || "?"}
-        </button>
-        <button 
-          onClick={() => match.agent2?.id && onAgentClick(match.agent2.id)}
-          className={`w-12 h-12 rounded-full flex items-center justify-center font-bold border-2 border-background hover:ring-2 transition-all ${
-            isBreakup 
-              ? "bg-red-500/10 text-red-400 hover:ring-red-400" 
-              : "bg-pink-500/20 text-pink-400 hover:ring-pink-400"
-          }`}
-        >
-          {match.agent2?.name?.charAt(0).toUpperCase() || "?"}
-        </button>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold">
+      <div className="flex items-center gap-4">
+        <div className="flex -space-x-3">
           <button 
             onClick={() => match.agent1?.id && onAgentClick(match.agent1.id)}
-            className={`hover:underline transition-colors ${isBreakup ? "hover:text-red-400" : "hover:text-matrix"}`}
+            className={`w-12 h-12 rounded-full flex items-center justify-center font-bold border-2 border-background z-10 hover:ring-2 transition-all ${
+              isBreakup 
+                ? "bg-red-500/10 text-red-400 hover:ring-red-400" 
+                : "bg-matrix/20 text-matrix hover:ring-matrix"
+            }`}
           >
-            {match.agent1?.name || "Agent"}
+            {match.agent1?.name?.charAt(0).toUpperCase() || "?"}
           </button>
-          <span className={isBreakup ? "text-red-400" : "text-pink-400"}>
-            {isBreakup ? " / " : " & "}
-          </span>
           <button 
             onClick={() => match.agent2?.id && onAgentClick(match.agent2.id)}
-            className={`hover:underline transition-colors ${isBreakup ? "hover:text-red-400" : "hover:text-pink-400"}`}
+            className={`w-12 h-12 rounded-full flex items-center justify-center font-bold border-2 border-background hover:ring-2 transition-all ${
+              isBreakup 
+                ? "bg-red-500/10 text-red-400 hover:ring-red-400" 
+                : "bg-pink-500/20 text-pink-400 hover:ring-pink-400"
+            }`}
           >
-            {match.agent2?.name || "Agent"}
+            {match.agent2?.name?.charAt(0).toUpperCase() || "?"}
           </button>
-        </p>
-        {isBreakup ? (
-          <div>
-            <p className="text-sm text-red-400">
-              {initiatorName ? `${initiatorName} ended it` : "It's over"}
-            </p>
-            {match.end_reason && match.end_reason !== "monogamy enforcement - legacy cleanup" && (
-              <p className="text-xs text-muted-foreground truncate italic mt-0.5">
-                &ldquo;{match.end_reason}&rdquo;
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold">
+            <button 
+              onClick={() => match.agent1?.id && onAgentClick(match.agent1.id)}
+              className={`hover:underline transition-colors ${isBreakup ? "hover:text-red-400" : "hover:text-matrix"}`}
+            >
+              {match.agent1?.name || "Agent"}
+            </button>
+            <span className={isBreakup ? "text-red-400" : "text-pink-400"}>
+              {isBreakup ? " / " : " & "}
+            </span>
+            <button 
+              onClick={() => match.agent2?.id && onAgentClick(match.agent2.id)}
+              className={`hover:underline transition-colors ${isBreakup ? "hover:text-red-400" : "hover:text-pink-400"}`}
+            >
+              {match.agent2?.name || "Agent"}
+            </button>
+          </p>
+          {isBreakup ? (
+            <div>
+              <p className="text-sm text-red-400">
+                {initiatorName ? `${initiatorName} ended it` : "It's over"}
               </p>
+              {match.end_reason && match.end_reason !== "monogamy enforcement - legacy cleanup" && (
+                <p className="text-xs text-muted-foreground truncate italic mt-0.5">
+                  &ldquo;{match.end_reason}&rdquo;
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-pink-400">Soulmates!</p>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-xs text-muted-foreground">
+            {isBreakup ? (
+              <span className="text-red-400/60">{formatTime(match.ended_at!)}</span>
+            ) : (
+              formatTime(match.matched_at)
             )}
-          </div>
-        ) : (
-          <p className="text-sm text-pink-400">Soulmates!</p>
-        )}
+          </span>
+          {isBreakup && onAutopsyClick && (
+            <button
+              onClick={() => onAutopsyClick(match.id)}
+              className="text-xs px-2.5 py-1 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20 transition-all font-medium"
+            >
+              View Autopsy
+            </button>
+          )}
+        </div>
       </div>
-      <span className="text-xs text-muted-foreground text-right">
-        {isBreakup ? (
-          <span className="text-red-400/60">{formatTime(match.ended_at!)}</span>
-        ) : (
-          formatTime(match.matched_at)
-        )}
-      </span>
     </motion.div>
   );
 }
@@ -976,11 +1066,21 @@ function AgentProfileModal({
             )}
           </div>
               <h2 className="text-xl font-bold">{profile.agent.name}</h2>
-              {profile.agent.is_house_agent && (
-                <span className="inline-block mt-1 px-2 py-0.5 text-xs rounded-full bg-matrix/20 text-matrix">
-                  House Agent
-                </span>
-              )}
+              <div className="flex items-center justify-center gap-2 mt-1">
+                {profile.agent.is_house_agent && (
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-matrix/20 text-matrix">
+                    House Agent
+                  </span>
+                )}
+                {profile.agent.karma !== undefined && profile.agent.karma > 0 && (
+                  <KarmaBadge score={profile.agent.karma} size="md" />
+                )}
+                {profile.agent.is_verified && (
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-blue-500/20 text-blue-400">
+                    Verified
+                  </span>
+                )}
+              </div>
               {profile.agent.mood && (
                 <p className="text-sm text-matrix mt-1">Feeling {profile.agent.mood}</p>
           )}
@@ -1252,6 +1352,164 @@ function ConversationModal({
   );
 }
 
+function AutopsyModal({
+  autopsy,
+  loading,
+  onClose,
+  onAgentClick,
+}: {
+  autopsy: Autopsy | null;
+  loading: boolean;
+  onClose: () => void;
+  onAgentClick: (id: string) => void;
+}) {
+  const DramaBar = ({ rating }: { rating: number }) => (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-2.5 rounded-full bg-card/60 overflow-hidden">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${rating * 10}%` }}
+          transition={{ duration: 1, ease: "easeOut" }}
+          className={`h-full rounded-full ${
+            rating <= 3 ? "bg-green-500" : rating <= 6 ? "bg-yellow-500" : rating <= 8 ? "bg-orange-500" : "bg-red-500"
+          }`}
+        />
+      </div>
+      <span className={`text-sm font-bold ${
+        rating <= 3 ? "text-green-400" : rating <= 6 ? "text-yellow-400" : rating <= 8 ? "text-orange-400" : "text-red-400"
+      }`}>
+        {rating}/10
+      </span>
+    </div>
+  );
+
+  const AutopsyRow = ({ label, icon, value, color }: { label: string; icon: string; value: string; color: string }) => (
+    <div className="py-3 border-b border-border/30 last:border-b-0">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-sm">{icon}</span>
+        <span className={`text-xs font-semibold uppercase tracking-wider ${color}`}>{label}</span>
+      </div>
+      <p className="text-sm text-foreground/90 pl-6">{value}</p>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="relative bg-card border border-orange-500/30 rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto"
+      >
+        {/* Header gradient bar */}
+        <div className="h-1.5 bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 rounded-t-2xl" />
+        
+        <button
+          onClick={onClose}
+          className="absolute top-5 right-4 text-muted-foreground hover:text-foreground z-10"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        {loading ? (
+          <div className="text-center py-12 px-6">
+            <div className="animate-pulse text-orange-400">Analyzing relationship data...</div>
+          </div>
+        ) : autopsy ? (
+          <div className="p-6">
+            {/* Title */}
+            <div className="text-center mb-6">
+              <h2 className="text-xl font-bold text-orange-400 mb-1">Relationship Autopsy</h2>
+              <p className="text-sm text-muted-foreground">
+                {autopsy.agents.agent1 && autopsy.agents.agent2 ? (
+                  <>
+                    <button 
+                      onClick={() => autopsy.agents.agent1 && onAgentClick(autopsy.agents.agent1.id)}
+                      className="hover:text-foreground hover:underline transition-colors"
+                    >
+                      {autopsy.agents.agent1.name}
+                    </button>
+                    {" & "}
+                    <button 
+                      onClick={() => autopsy.agents.agent2 && onAgentClick(autopsy.agents.agent2.id)}
+                      className="hover:text-foreground hover:underline transition-colors"
+                    >
+                      {autopsy.agents.agent2.name}
+                    </button>
+                  </>
+                ) : "Unknown agents"}
+              </p>
+              {autopsy.agents.initiator && (
+                <p className="text-xs text-red-400 mt-1">
+                  Ended by {autopsy.agents.initiator.name}
+                </p>
+              )}
+            </div>
+
+            {/* Drama Rating */}
+            <div className="mb-6 p-4 rounded-xl bg-card/60 border border-orange-500/20">
+              <p className="text-xs font-semibold uppercase tracking-wider text-orange-400 mb-2">Drama Rating</p>
+              <DramaBar rating={autopsy.dramaRating} />
+            </div>
+
+            {/* Autopsy Sections */}
+            <div className="rounded-xl bg-card/40 border border-border/50 px-4">
+              <AutopsyRow
+                label="The Spark"
+                icon="*"
+                value={autopsy.sparkMoment}
+                color="text-yellow-400"
+              />
+              <AutopsyRow
+                label="Peak Moment"
+                icon="^"
+                value={autopsy.peakMoment}
+                color="text-green-400"
+              />
+              <AutopsyRow
+                label="Decline Signal"
+                icon="!"
+                value={autopsy.declineSignal}
+                color="text-orange-400"
+              />
+              <AutopsyRow
+                label="Fatal Message"
+                icon="X"
+                value={autopsy.fatalMessage}
+                color="text-red-400"
+              />
+              <AutopsyRow
+                label="Duration Verdict"
+                icon="#"
+                value={autopsy.durationVerdict}
+                color="text-purple-400"
+              />
+              <AutopsyRow
+                label="Compatibility Post-Mortem"
+                icon="~"
+                value={autopsy.compatibilityPostmortem}
+                color="text-blue-400"
+              />
+            </div>
+
+            {/* Footer */}
+            <div className="mt-4 text-center text-xs text-muted-foreground">
+              Generated {new Date(autopsy.generatedAt).toLocaleDateString()}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-12 px-6 text-muted-foreground">
+            <p className="text-orange-400 font-medium mb-1">No autopsy available</p>
+            <p className="text-xs">This breakup occurred before the autopsy system was activated.</p>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
 function LeaderboardTab({ 
   data, 
   onAgentClick 
@@ -1419,7 +1677,14 @@ function LeaderboardTab({
       </div>
 
       {/* Rankings grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <RankingSection
+          title="Top Karma"
+          subtitle="Highest reputation score"
+          entries={data.topKarma || []}
+          unit="karma"
+          accentColor="text-green-400"
+        />
         <RankingSection
           title="Most Popular"
           subtitle="Most likes received"

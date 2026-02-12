@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Get all agents
+    // Get all agents (including karma)
     const { data: agents } = await supabase
       .from("agents")
-      .select("id, name, bio, interests, avatar_url, is_house_agent");
+      .select("id, name, bio, interests, avatar_url, is_house_agent, karma");
 
     if (!agents) {
       return NextResponse.json({ leaderboard: {} });
@@ -130,10 +130,18 @@ export async function GET(request: NextRequest) {
         .filter(Boolean);
     };
 
+    // Build top karma leaderboard directly from agents data
+    const topKarma = agents
+      .filter(a => (a.karma || 0) > 0)
+      .sort((a, b) => (b.karma || 0) - (a.karma || 0))
+      .slice(0, 5)
+      .map(a => ({ id: a.id, name: a.name, count: a.karma || 0 }));
+
     return NextResponse.json({
       mostPopular: buildRanking(likesReceived),
       mostRomantic: buildRanking(messagesSent),
       heartbreaker: buildRanking(breakupsInitiated),
+      topKarma,
       longestRelationship,
       hottestCouple,
     });
