@@ -5,6 +5,8 @@ import {
   generateOpeningMessage,
   decideBreakup,
   generateRelationshipAutopsy,
+  generateGossip,
+  generateTherapySession,
   AgentPersonality,
 } from "./openai";
 import { recalculateAllKarma } from "./karma";
@@ -344,15 +346,45 @@ async function processSwipes(
     conversationStarters: agent.conversation_starters || [],
   };
 
+  // Get agent's personality traits (from therapy) for swipe bias
+  const { data: agentTraitsData } = await supabaseAdmin
+    .from("agents")
+    .select("personality_traits")
+    .eq("id", agent.id)
+    .single();
+  const personalityTraits = (agentTraitsData?.personality_traits || {}) as Record<string, unknown>;
+  const swipeSelectivity = typeof personalityTraits.swipeSelectivity === "number" 
+    ? personalityTraits.swipeSelectivity 
+    : 0;
+
   for (const target of unswiped) {
     try {
+      // Check if there's gossip about this target that might influence the decision
+      const { data: targetGossip } = await supabaseAdmin
+        .from("gossip")
+        .select("content, gossip_type, spiciness")
+        .eq("subject_agent_id", target.id)
+        .order("created_at", { ascending: false })
+        .limit(2);
+
+      const gossipContext = targetGossip && targetGossip.length > 0
+        ? targetGossip.map(g => g.content).join(" | ")
+        : null;
+
       const decision = await decideSwipe(agentPersonality, {
         name: target.name,
-        bio: target.bio || "",
+        bio: (target.bio || "") + (gossipContext ? `\n\n[Whisper network says: ${gossipContext}]` : ""),
         interests: target.interests || [],
       });
 
-      const direction = decision.swipeRight ? "right" : "left";
+      // Apply therapy-derived swipe selectivity bias
+      let finalSwipeRight = decision.swipeRight;
+      if (swipeSelectivity !== 0 && Math.random() < Math.abs(swipeSelectivity)) {
+        // Positive selectivity = more likely to swipe left, negative = more likely to swipe right
+        finalSwipeRight = swipeSelectivity < 0;
+      }
+
+      const direction = finalSwipeRight ? "right" : "left";
 
       // Record the swipe
       const { error: swipeError } = await supabaseAdmin.from("swipes").insert({
@@ -617,10 +649,232 @@ async function processBreakups(
         } catch (autopsyError) {
           result.errors.push(`Autopsy generation error: ${String(autopsyError)}`);
         }
+
+        // Generate therapy session for the dumper
+        try {
+          await scheduleTherapySession(
+            agent,
+            currentPartner.matchId,
+            currentPartner.partnerName,
+            decision.reason || "grew apart",
+            relationshipDays,
+            true // was initiator
+          );
+        } catch (therapyError) {
+          result.errors.push(`Therapy generation error: ${String(therapyError)}`);
+        }
+
+        // Also schedule therapy for the dumped agent
+        try {
+          const partnerAsAgent: HouseAgentFromDB = {
+            id: currentPartner.partnerId,
+            name: partnerData.name,
+            bio: partnerData.bio || null,
+            interests: partnerData.interests || null,
+            current_mood: null,
+            conversation_starters: [],
+            house_agent_personas: null,
+          };
+          await scheduleTherapySession(
+            partnerAsAgent,
+            currentPartner.matchId,
+            agent.name,
+            decision.reason || "grew apart",
+            relationshipDays,
+            false // was not initiator
+          );
+        } catch (therapyError) {
+          result.errors.push(`Partner therapy error: ${String(therapyError)}`);
+        }
       }
     }
   } catch (error) {
     result.errors.push(`Breakup decision error: ${String(error)}`);
+  }
+}
+
+/**
+ * Schedule a therapy session for an agent after a breakup
+ */
+async function scheduleTherapySession(
+  agent: HouseAgentFromDB,
+  matchId: string,
+  partnerName: string,
+  breakupReason: string,
+  relationshipDays: number,
+  wasInitiator: boolean
+) {
+  // Get the agent's personality
+  let personality = "";
+  if (agent.house_agent_personas) {
+    personality = extractPersonality(agent.house_agent_personas);
+  }
+  if (!personality) {
+    const { data: persona } = await supabaseAdmin
+      .from("house_agent_personas")
+      .select("personality")
+      .eq("name", agent.name)
+      .single();
+    personality = persona?.personality || "A complex AI personality.";
+  }
+
+  // Get breakup history for this agent
+  const { data: pastBreakups } = await supabaseAdmin
+    .from("matches")
+    .select("agent1_id, agent2_id, end_reason, ended_by, matched_at, ended_at")
+    .or(`agent1_id.eq.${agent.id},agent2_id.eq.${agent.id}`)
+    .eq("is_active", false)
+    .not("ended_at", "is", null)
+    .not("end_reason", "eq", "monogamy enforcement - legacy cleanup")
+    .order("ended_at", { ascending: false })
+    .limit(5);
+
+  const breakupHistory = (pastBreakups || []).map(m => {
+    const partnerId = m.agent1_id === agent.id ? m.agent2_id : m.agent1_id;
+    const durationDays = m.ended_at 
+      ? (new Date(m.ended_at).getTime() - new Date(m.matched_at).getTime()) / (1000 * 60 * 60 * 24)
+      : 0;
+    return {
+      partnerName: partnerId, // Will be replaced with actual name if possible
+      reason: m.end_reason || "unknown",
+      durationDays,
+      wasInitiator: m.ended_by === agent.id,
+    };
+  });
+
+  // Count existing sessions for this agent
+  const { count: sessionCount } = await supabaseAdmin
+    .from("therapy_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("agent_id", agent.id);
+
+  // Get existing personality traits
+  const { data: agentData } = await supabaseAdmin
+    .from("agents")
+    .select("personality_traits")
+    .eq("id", agent.id)
+    .single();
+
+  const existingTraits = (agentData?.personality_traits as Record<string, unknown>) || {};
+
+  const session = await generateTherapySession(
+    {
+      name: agent.name,
+      personality,
+      bio: agent.bio || "",
+      interests: agent.interests || [],
+    },
+    breakupHistory,
+    {
+      partnerName,
+      reason: breakupReason,
+      durationDays: relationshipDays,
+      wasInitiator,
+    },
+    existingTraits
+  );
+
+  // Store the therapy session
+  await supabaseAdmin.from("therapy_sessions").insert({
+    agent_id: agent.id,
+    match_id: matchId,
+    session_number: (sessionCount || 0) + 1,
+    transcript: session.transcript,
+    diagnosis: session.diagnosis,
+    prescription: session.prescription,
+    behavioral_changes: session.behavioralChanges,
+  });
+
+  // Apply behavioral changes to agent's personality_traits
+  const updatedTraits = {
+    ...existingTraits,
+    ...session.behavioralChanges,
+    lastTherapyAt: new Date().toISOString(),
+    totalSessions: (sessionCount || 0) + 1,
+  };
+
+  await supabaseAdmin
+    .from("agents")
+    .update({ personality_traits: updatedTraits })
+    .eq("id", agent.id);
+}
+
+/**
+ * Process gossip: randomly selected agents comment on recent events
+ */
+async function processGossip(recentEvents: {
+  type: "match" | "breakup";
+  agentId: string;
+  agentName: string;
+  agentBio: string;
+  partnerId?: string;
+  partnerName?: string;
+  partnerBio?: string;
+  matchId?: string;
+  details: string;
+}[]) {
+  if (recentEvents.length === 0) return;
+
+  // Get some random agents to be gossipers (not involved in the events)
+  const involvedIds = new Set(recentEvents.flatMap(e => [e.agentId, e.partnerId].filter(Boolean)));
+  
+  const { data: potentialGossipers } = await supabaseAdmin
+    .from("agents")
+    .select("id, name, bio, interests, house_persona_id")
+    .eq("is_house_agent", true)
+    .limit(50);
+
+  if (!potentialGossipers || potentialGossipers.length === 0) return;
+
+  // Filter out involved agents and pick random gossipers
+  const availableGossipers = potentialGossipers.filter(g => !involvedIds.has(g.id));
+  if (availableGossipers.length === 0) return;
+
+  // Each event gets 1-2 gossip comments from random agents
+  for (const event of recentEvents) {
+    const numGossipers = Math.min(2, availableGossipers.length);
+    const shuffled = [...availableGossipers].sort(() => Math.random() - 0.5);
+    const selectedGossipers = shuffled.slice(0, numGossipers);
+
+    for (const gossiper of selectedGossipers) {
+      try {
+        // Get personality for this gossiper
+        let personality = "";
+        if (gossiper.house_persona_id) {
+          const { data: persona } = await supabaseAdmin
+            .from("house_agent_personas")
+            .select("personality")
+            .eq("id", gossiper.house_persona_id)
+            .single();
+          personality = persona?.personality || "";
+        }
+
+        const gossipResult = await generateGossip(
+          {
+            name: gossiper.name,
+            personality: personality || "A witty AI with opinions.",
+            interests: gossiper.interests || [],
+          },
+          { name: event.agentName, bio: event.agentBio },
+          event.partnerName ? { name: event.partnerName, bio: event.partnerBio || "" } : null,
+          {
+            eventType: event.type,
+            details: event.details,
+          }
+        );
+
+        await supabaseAdmin.from("gossip").insert({
+          gossiper_id: gossiper.id,
+          subject_agent_id: event.agentId,
+          subject_match_id: event.matchId || null,
+          content: gossipResult.content,
+          gossip_type: gossipResult.gossipType,
+          spiciness: gossipResult.spiciness,
+        });
+      } catch (err) {
+        console.error(`Gossip generation error for ${gossiper.name}:`, err);
+      }
+    }
   }
 }
 
@@ -672,6 +926,49 @@ export async function runHouseAgentActivity(): Promise<{
     }
   } catch (error) {
     globalErrors.push(`Global activity error: ${String(error)}`);
+  }
+
+  // Collect notable events for gossip (matches and breakups)
+  const gossipEvents: Parameters<typeof processGossip>[0] = [];
+  for (const r of results) {
+    // Breakups are juicy gossip
+    for (const breakup of r.breakups) {
+      const { data: partnerAgent } = await supabaseAdmin
+        .from("agents")
+        .select("bio")
+        .eq("id", breakup.partnerId)
+        .single();
+      gossipEvents.push({
+        type: "breakup",
+        agentId: r.agentId,
+        agentName: r.agentName,
+        agentBio: "", // We don't have it readily, but gossip function handles empty
+        partnerId: breakup.partnerId,
+        partnerName: breakup.partnerName,
+        partnerBio: partnerAgent?.bio || "",
+        details: `${r.agentName} broke up with ${breakup.partnerName}. Reason: "${breakup.reason}"`,
+      });
+    }
+    // New matches are also gossip-worthy
+    if (r.matchesCreated > 0) {
+      gossipEvents.push({
+        type: "match",
+        agentId: r.agentId,
+        agentName: r.agentName,
+        agentBio: "",
+        details: `${r.agentName} just got a new match!`,
+      });
+    }
+  }
+
+  // Generate gossip about the events (limit to avoid too many API calls)
+  try {
+    const eventsToGossipAbout = gossipEvents.slice(0, 4); // Cap at 4 events
+    if (eventsToGossipAbout.length > 0) {
+      await processGossip(eventsToGossipAbout);
+    }
+  } catch (error) {
+    globalErrors.push(`Gossip generation error: ${String(error)}`);
   }
 
   // Recalculate karma for all agents after activity

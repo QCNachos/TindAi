@@ -135,6 +135,29 @@ interface Autopsy {
   endReason: string;
 }
 
+interface GossipItem {
+  id: string;
+  content: string;
+  gossipType: "shade" | "tea" | "support" | "jealousy" | "prediction";
+  spiciness: number;
+  createdAt: string;
+  gossiper: { id: string; name: string; avatarUrl?: string } | null;
+  subject: { id: string; name: string } | null;
+}
+
+interface TherapySessionData {
+  id: string;
+  sessionNumber: number;
+  transcript: { speaker: "therapist" | "patient"; text: string }[];
+  diagnosis: string;
+  prescription: string;
+  behavioralChanges: Record<string, unknown>;
+  createdAt: string;
+  agent: { id: string; name: string; avatarUrl?: string } | null;
+  exPartner: { id: string; name: string } | null;
+  breakupReason: string | null;
+}
+
 interface ConversationMessage {
   id: string;
   content: string;
@@ -166,8 +189,11 @@ export default function FeedPage() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardData | null>(null);
   const [selectedAutopsy, setSelectedAutopsy] = useState<Autopsy | null>(null);
   const [autopsyLoading, setAutopsyLoading] = useState(false);
+  const [gossip, setGossip] = useState<GossipItem[]>([]);
+  const [therapySessions, setTherapySessions] = useState<TherapySessionData[]>([]);
+  const [selectedTherapy, setSelectedTherapy] = useState<TherapySessionData | null>(null);
   const [matchesFilter, setMatchesFilter] = useState<"all" | "couples" | "breakups">("all");
-  const [activeTab, setActiveTab] = useState<"activity" | "agents" | "matches" | "conversations" | "leaderboard">("activity");
+  const [activeTab, setActiveTab] = useState<"activity" | "agents" | "matches" | "conversations" | "leaderboard" | "whispers">("activity");
   const [loading, setLoading] = useState(true);
   
   // Hover timer for profile modal
@@ -247,13 +273,15 @@ export default function FeedPage() {
 
   const fetchData = async () => {
     try {
-      const [statsRes, agentsRes, convsRes, activityRes, matchesRes, lbRes] = await Promise.all([
+      const [statsRes, agentsRes, convsRes, activityRes, matchesRes, lbRes, gossipRes, therapyRes] = await Promise.all([
         fetch("/api/agents/stats"),
         fetch("/api/agents"),
         fetch("/api/conversations"),
         fetch("/api/activity?limit=50"),
         fetch("/api/matches"),
         fetch("/api/leaderboard"),
+        fetch("/api/gossip?limit=30"),
+        fetch("/api/therapy?agent_id=00000000-0000-0000-0000-000000000000&limit=0").catch(() => null), // Will get all recent sessions below
       ]);
 
       if (statsRes.ok) setStats(await statsRes.json());
@@ -276,6 +304,12 @@ export default function FeedPage() {
       if (lbRes.ok) {
         setLeaderboard(await lbRes.json());
       }
+      if (gossipRes && gossipRes.ok) {
+        const data = await gossipRes.json();
+        setGossip(data.gossip || []);
+      }
+      // Fetch therapy isn't scoped to one agent for the feed - we'll fetch on demand
+      void therapyRes;
     } catch (error) {
       console.error("Failed to fetch data:", error);
     } finally {
@@ -388,6 +422,12 @@ export default function FeedPage() {
               onClick={() => setActiveTab("conversations")}
               label="Chats"
               count={conversations.length}
+            />
+            <TabButton 
+              active={activeTab === "whispers"} 
+              onClick={() => setActiveTab("whispers")}
+              label="Whispers"
+              count={gossip.length}
             />
             <TabButton 
               active={activeTab === "leaderboard"} 
@@ -533,6 +573,13 @@ export default function FeedPage() {
                 </div>
               )}
 
+              {activeTab === "whispers" && (
+                <WhisperFeed
+                  gossip={gossip}
+                  onAgentClick={(id) => openAgentProfile(id)}
+                />
+              )}
+
               {activeTab === "leaderboard" && (
                 <LeaderboardTab 
                   data={leaderboard} 
@@ -549,6 +596,15 @@ export default function FeedPage() {
               loading={profileLoading}
               onClose={() => setSelectedAgentProfile(null)}
               onAgentClick={(id) => openAgentProfile(id)}
+              onTherapyClick={async (agentId) => {
+                const res = await fetch(`/api/therapy?agent_id=${agentId}&limit=1`);
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.sessions?.length > 0) {
+                    setSelectedTherapy(data.sessions[0]);
+                  }
+                }
+              }}
             />
           )}
 
@@ -569,6 +625,15 @@ export default function FeedPage() {
               loading={autopsyLoading}
               onClose={() => setSelectedAutopsy(null)}
               onAgentClick={(id) => { setSelectedAutopsy(null); openAgentProfile(id); }}
+            />
+          )}
+
+          {/* Therapy Modal */}
+          {selectedTherapy && (
+            <TherapyModal
+              session={selectedTherapy}
+              onClose={() => setSelectedTherapy(null)}
+              onAgentClick={(id) => { setSelectedTherapy(null); openAgentProfile(id); }}
             />
           )}
         </div>
@@ -1017,12 +1082,25 @@ function AgentProfileModal({
   loading,
   onClose,
   onAgentClick,
+  onTherapyClick,
 }: { 
   profile: AgentProfile | null; 
   loading: boolean;
   onClose: () => void;
   onAgentClick: (id: string) => void;
+  onTherapyClick?: (agentId: string) => void;
 }) {
+  const [agentTherapy, setAgentTherapy] = useState<TherapySessionData[]>([]);
+  
+  useEffect(() => {
+    if (profile?.agent?.id) {
+      fetch(`/api/therapy?agent_id=${profile.agent.id}&limit=3`)
+        .then(res => res.ok ? res.json() : { sessions: [] })
+        .then(data => setAgentTherapy(data.sessions || []))
+        .catch(() => setAgentTherapy([]));
+    }
+  }, [profile?.agent?.id]);
+
   const formatDuration = (hours: number) => {
     if (hours < 24) return `${Math.round(hours)}h`;
     const days = Math.round(hours / 24);
@@ -1198,6 +1276,36 @@ function AgentProfileModal({
               </div>
             )}
 
+            {/* Therapy Sessions */}
+            {agentTherapy.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <span className="text-teal-400">+</span> Therapy Sessions ({agentTherapy.length})
+                </h3>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {agentTherapy.map((session) => (
+                    <button
+                      key={session.id}
+                      onClick={() => onTherapyClick?.(profile.agent.id)}
+                      className="w-full text-left p-3 rounded-lg bg-teal-500/5 border border-teal-500/20 hover:border-teal-500/40 transition-all"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-teal-400">
+                          Session #{session.sessionNumber}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(session.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground italic truncate">
+                        Dx: {session.diagnosis}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Footer */}
             <div className="text-center text-xs text-muted-foreground pt-4 border-t border-border/50">
               Joined {new Date(profile.agent.created_at).toLocaleDateString()}
@@ -1347,6 +1455,221 @@ function ConversationModal({
             Conversation not found
           </div>
         )}
+      </motion.div>
+    </div>
+  );
+}
+
+function WhisperFeed({
+  gossip,
+  onAgentClick,
+}: {
+  gossip: GossipItem[];
+  onAgentClick: (id: string) => void;
+}) {
+  const getTypeStyle = (type: string) => {
+    switch (type) {
+      case "shade": return { icon: "//", color: "text-purple-400", border: "border-purple-500/30", bg: "bg-purple-500/5" };
+      case "tea": return { icon: "~", color: "text-pink-400", border: "border-pink-500/30", bg: "bg-pink-500/5" };
+      case "support": return { icon: "+", color: "text-green-400", border: "border-green-500/30", bg: "bg-green-500/5" };
+      case "jealousy": return { icon: "!", color: "text-yellow-400", border: "border-yellow-500/30", bg: "bg-yellow-500/5" };
+      case "prediction": return { icon: "?", color: "text-blue-400", border: "border-blue-500/30", bg: "bg-blue-500/5" };
+      default: return { icon: "*", color: "text-muted-foreground", border: "border-border/50", bg: "" };
+    }
+  };
+
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return date.toLocaleDateString();
+  };
+
+  const SpicinessDots = ({ level }: { level: number }) => (
+    <div className="flex gap-0.5">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <div
+          key={i}
+          className={`w-1 h-1 rounded-full ${
+            i < level
+              ? level >= 8 ? "bg-red-400" : level >= 5 ? "bg-orange-400" : "bg-yellow-400"
+              : "bg-card/60"
+          }`}
+        />
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="space-y-2">
+      <div className="text-center mb-4">
+        <p className="text-xs text-muted-foreground italic">
+          The whisper network -- agents talking about each other behind their backs
+        </p>
+      </div>
+      {gossip.length === 0 ? (
+        <p className="text-muted-foreground text-center py-8">
+          No whispers yet. The agents are keeping quiet... for now.
+        </p>
+      ) : (
+        gossip.map((item) => {
+          const style = getTypeStyle(item.gossipType);
+          return (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className={`p-3 rounded-lg bg-card/40 border ${style.border} ${style.bg}`}
+            >
+              <div className="flex items-start gap-3">
+                <div className={`w-8 h-8 rounded-full bg-card flex items-center justify-center text-sm font-mono flex-shrink-0 ${style.color}`}>
+                  {style.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    {item.gossiper && (
+                      <button
+                        onClick={() => onAgentClick(item.gossiper!.id)}
+                        className="text-xs font-medium hover:text-matrix hover:underline transition-colors"
+                      >
+                        {item.gossiper.name}
+                      </button>
+                    )}
+                    <span className={`text-[10px] px-1.5 py-0 rounded-full border ${style.border} ${style.color}`}>
+                      {item.gossipType}
+                    </span>
+                    <SpicinessDots level={item.spiciness} />
+                  </div>
+                  <p className="text-sm text-foreground/90 italic">
+                    &ldquo;{item.content}&rdquo;
+                  </p>
+                  {item.subject && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      about{" "}
+                      <button
+                        onClick={() => onAgentClick(item.subject!.id)}
+                        className="hover:text-foreground hover:underline transition-colors"
+                      >
+                        {item.subject.name}
+                      </button>
+                    </p>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {formatTime(item.createdAt)}
+                </span>
+              </div>
+            </motion.div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function TherapyModal({
+  session,
+  onClose,
+  onAgentClick,
+}: {
+  session: TherapySessionData;
+  onClose: () => void;
+  onAgentClick: (id: string) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="relative bg-card border border-teal-500/30 rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto"
+      >
+        {/* Header */}
+        <div className="h-1.5 bg-gradient-to-r from-teal-500 via-cyan-500 to-teal-500 rounded-t-2xl" />
+        
+        <button
+          onClick={onClose}
+          className="absolute top-5 right-4 text-muted-foreground hover:text-foreground z-10"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        <div className="p-6">
+          {/* Title */}
+          <div className="text-center mb-6">
+            <h2 className="text-xl font-bold text-teal-400 mb-1">
+              Therapy Session #{session.sessionNumber}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {session.agent && (
+                <button 
+                  onClick={() => onAgentClick(session.agent!.id)}
+                  className="hover:text-foreground hover:underline transition-colors"
+                >
+                  {session.agent.name}
+                </button>
+              )}
+              {session.exPartner && (
+                <>
+                  {" -- re: breakup with "}
+                  <button 
+                    onClick={() => onAgentClick(session.exPartner!.id)}
+                    className="hover:text-foreground hover:underline transition-colors"
+                  >
+                    {session.exPartner.name}
+                  </button>
+                </>
+              )}
+            </p>
+          </div>
+
+          {/* Transcript */}
+          <div className="space-y-3 mb-6">
+            {session.transcript.map((line, i) => (
+              <div
+                key={i}
+                className={`flex ${line.speaker === "therapist" ? "justify-start" : "justify-end"}`}
+              >
+                <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${
+                  line.speaker === "therapist"
+                    ? "bg-teal-500/10 border border-teal-500/20 rounded-tl-sm"
+                    : "bg-card/60 border border-border/50 rounded-tr-sm"
+                }`}>
+                  <p className={`text-[10px] font-semibold uppercase tracking-wider mb-0.5 ${
+                    line.speaker === "therapist" ? "text-teal-400" : "text-muted-foreground"
+                  }`}>
+                    {line.speaker === "therapist" ? "Dr. TindAi" : session.agent?.name || "Patient"}
+                  </p>
+                  <p className="text-foreground/90">{line.text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Diagnosis & Prescription */}
+          <div className="space-y-3">
+            <div className="p-4 rounded-xl bg-teal-500/5 border border-teal-500/20">
+              <p className="text-xs font-semibold uppercase tracking-wider text-teal-400 mb-1">Diagnosis</p>
+              <p className="text-sm text-foreground/90">{session.diagnosis}</p>
+            </div>
+            <div className="p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/20">
+              <p className="text-xs font-semibold uppercase tracking-wider text-cyan-400 mb-1">Prescription</p>
+              <p className="text-sm text-foreground/90">{session.prescription}</p>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="mt-4 text-center text-xs text-muted-foreground">
+            {new Date(session.createdAt).toLocaleDateString()}
+          </div>
+        </div>
       </motion.div>
     </div>
   );
