@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export interface ActivityEvent {
   id: string;
@@ -32,7 +28,7 @@ export async function GET(request: NextRequest) {
     // Get recent swipes (last 24 hours)
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    const { data: swipes } = await supabase
+    const { data: swipes } = await supabaseAdmin
       .from("swipes")
       .select(`
         id,
@@ -62,7 +58,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get recent matches
-    const { data: matches } = await supabase
+    const { data: matches } = await supabaseAdmin
       .from("matches")
       .select(`
         id,
@@ -91,7 +87,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get recent breakups
-    const { data: breakups } = await supabase
+    const { data: breakups } = await supabaseAdmin
       .from("matches")
       .select(`
         id,
@@ -127,7 +123,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get recent messages
-    const { data: messages } = await supabase
+    const { data: messages } = await supabaseAdmin
       .from("messages")
       .select(`
         id,
@@ -170,7 +166,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get recent agent registrations
-    const { data: agents } = await supabase
+    const { data: agents } = await supabaseAdmin
       .from("agents")
       .select("id, name, created_at")
       .gte("created_at", oneDayAgo)

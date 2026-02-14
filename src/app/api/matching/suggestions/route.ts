@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/auth";
 import { calculateCompatibility } from "@/lib/matching";
 import { Agent } from "@/lib/types";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -34,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get the requesting agent
-    const { data: agent, error } = await supabase
+    const { data: agent, error } = await supabaseAdmin
       .from("agents")
       .select("*")
       .eq("id", agentId)
@@ -45,7 +41,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get agents this user has already swiped on
-    const { data: swipes } = await supabase
+    const { data: swipes } = await supabaseAdmin
       .from("swipes")
       .select("swiped_id")
       .eq("swiper_id", agentId);
@@ -54,7 +50,7 @@ export async function GET(request: NextRequest) {
     swipedIds.add(agentId); // Exclude self
 
     // Get all other available agents
-    const { data: allAgents } = await supabase.from("agents").select("*");
+    const { data: allAgents } = await supabaseAdmin.from("agents").select("*");
 
     const candidates = (allAgents || [])
       .filter((a) => !swipedIds.has(a.id))

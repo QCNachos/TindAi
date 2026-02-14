@@ -179,11 +179,19 @@ function MessagesPageContent() {
     if (!agent || !selectedMatch || !newMessage.trim()) return;
     
     setSending(true);
-    await supabase.from("messages").insert({
-      match_id: selectedMatch.id,
-      sender_id: agent.id,
-      content: newMessage.trim(),
-    });
+    try {
+      await fetch("/api/ui/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          match_id: selectedMatch.id,
+          sender_id: agent.id,
+          content: newMessage.trim(),
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to send message:", error);
+    }
     
     setNewMessage("");
     setSending(false);

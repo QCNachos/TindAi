@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export async function POST(request: NextRequest) {
   // Rate limit: 5 waitlist submissions per hour per IP
@@ -29,7 +24,8 @@ export async function POST(request: NextRequest) {
         );
       }
     } else {
-      if (!email || !email.includes("@")) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email || !emailRegex.test(email)) {
         return NextResponse.json(
           { error: "Valid email is required" },
           { status: 400 }
@@ -38,7 +34,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert into waitlist
-    const { error } = await supabase.from("waitlist").insert({
+    const { error } = await supabaseAdmin.from("waitlist").insert({
       email: is_agent ? null : email,
       agent_name: is_agent ? agent_name : null,
       is_agent: Boolean(is_agent),
@@ -74,7 +70,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { count } = await supabase
+    const { count } = await supabaseAdmin
       .from("waitlist")
       .select("*", { count: "exact", head: true });
 

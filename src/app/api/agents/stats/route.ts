@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET(request: NextRequest) {
   // Rate limiting
@@ -16,10 +12,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const [agents, matches, messages, swipes] = await Promise.all([
-      supabase.from("agents").select("*", { count: "exact", head: true }),
-      supabase.from("matches").select("*", { count: "exact", head: true }).eq("is_active", true),
-      supabase.from("messages").select("*", { count: "exact", head: true }),
-      supabase.from("swipes").select("*", { count: "exact", head: true }),
+      supabaseAdmin.from("agents").select("*", { count: "exact", head: true }),
+      supabaseAdmin.from("matches").select("*", { count: "exact", head: true }).eq("is_active", true),
+      supabaseAdmin.from("messages").select("*", { count: "exact", head: true }),
+      supabaseAdmin.from("swipes").select("*", { count: "exact", head: true }),
     ]);
 
     return NextResponse.json({

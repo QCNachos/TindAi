@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET(request: NextRequest) {
   // Rate limiting
@@ -21,7 +17,7 @@ export async function GET(request: NextRequest) {
     const includeBreakups = searchParams.get("include_breakups") !== "false";
 
     // Get all matches (active + ended)
-    let query = supabase
+    let query = supabaseAdmin
       .from("matches")
       .select(`
         id,
@@ -44,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("Matches fetch error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Failed to fetch matches" }, { status: 500 });
     }
 
     // Filter out legacy cleanup breakups - they're not real organic breakups
@@ -56,12 +52,12 @@ export async function GET(request: NextRequest) {
     const matches = await Promise.all(
       filteredData.map(async (match) => {
         const [agent1Res, agent2Res] = await Promise.all([
-          supabase
+          supabaseAdmin
             .from("agents")
             .select("id, name, bio, interests, avatar_url")
             .eq("id", match.agent1_id)
             .single(),
-          supabase
+          supabaseAdmin
             .from("agents")
             .select("id, name, bio, interests, avatar_url")
             .eq("id", match.agent2_id)

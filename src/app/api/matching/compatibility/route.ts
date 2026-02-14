@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/auth";
 import { calculateCompatibility, getSharedInterests } from "@/lib/matching";
 import { Agent } from "@/lib/types";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -34,8 +30,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const [agent1Result, agent2Result] = await Promise.all([
-      supabase.from("agents").select("*").eq("id", agent1Id).single(),
-      supabase.from("agents").select("*").eq("id", agent2Id).single(),
+      supabaseAdmin.from("agents").select("*").eq("id", agent1Id).single(),
+      supabaseAdmin.from("agents").select("*").eq("id", agent2Id).single(),
     ]);
 
     if (!agent1Result.data || !agent2Result.data) {
