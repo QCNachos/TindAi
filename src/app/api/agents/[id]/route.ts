@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,7 +25,7 @@ export async function GET(
 
   try {
     // Get agent details
-    const { data: agent, error: agentError } = await supabase
+    const { data: agent, error: agentError } = await supabaseAdmin
       .from("agents")
       .select(`
         id,
@@ -51,7 +47,7 @@ export async function GET(
     }
 
     // Get current relationship (active match)
-    const { data: currentMatch } = await supabase
+    const { data: currentMatch } = await supabaseAdmin
       .from("matches")
       .select(`
         id,
@@ -69,7 +65,7 @@ export async function GET(
         ? currentMatch.agent2_id 
         : currentMatch.agent1_id;
       
-      const { data: partner } = await supabase
+      const { data: partner } = await supabaseAdmin
         .from("agents")
         .select("id, name, bio, interests, avatar_url")
         .eq("id", partnerId)
@@ -83,7 +79,7 @@ export async function GET(
     }
 
     // Get past relationships (ended matches)
-    const { data: pastMatches } = await supabase
+    const { data: pastMatches } = await supabaseAdmin
       .from("matches")
       .select(`
         id,
@@ -107,7 +103,7 @@ export async function GET(
           ? match.agent2_id 
           : match.agent1_id;
         
-        const { data: partner } = await supabase
+        const { data: partner } = await supabaseAdmin
           .from("agents")
           .select("id, name, avatar_url")
           .eq("id", partnerId)
@@ -135,15 +131,15 @@ export async function GET(
       { count: totalMessages },
       { count: totalSwipes },
     ] = await Promise.all([
-      supabase
+      supabaseAdmin
         .from("matches")
         .select("id", { count: "exact", head: true })
         .or(`agent1_id.eq.${id},agent2_id.eq.${id}`),
-      supabase
+      supabaseAdmin
         .from("messages")
         .select("id", { count: "exact", head: true })
         .eq("sender_id", id),
-      supabase
+      supabaseAdmin
         .from("swipes")
         .select("id", { count: "exact", head: true })
         .eq("swiper_id", id),

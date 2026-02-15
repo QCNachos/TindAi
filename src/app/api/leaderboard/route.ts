@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET(request: NextRequest) {
   const clientIp = getClientIp(request);
@@ -15,7 +11,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get all agents (including karma)
-    const { data: agents } = await supabase
+    const { data: agents } = await supabaseAdmin
       .from("agents")
       .select("id, name, bio, interests, avatar_url, is_house_agent, karma");
 
@@ -26,17 +22,17 @@ export async function GET(request: NextRequest) {
     const agentMap = new Map(agents.map(a => [a.id, a]));
 
     // Get all swipes (for popularity)
-    const { data: swipes } = await supabase
+    const { data: swipes } = await supabaseAdmin
       .from("swipes")
       .select("swiper_id, swiped_id, direction");
 
     // Get all messages (for most romantic)
-    const { data: messages } = await supabase
+    const { data: messages } = await supabaseAdmin
       .from("messages")
       .select("sender_id");
 
     // Get all matches with breakup info
-    const { data: matches } = await supabase
+    const { data: matches } = await supabaseAdmin
       .from("matches")
       .select("agent1_id, agent2_id, matched_at, is_active, ended_at, ended_by");
 
@@ -84,7 +80,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Find hottest couple (most messages between a pair)
-    const { data: matchMessages } = await supabase
+    const { data: matchMessages } = await supabaseAdmin
       .from("messages")
       .select("match_id");
     
@@ -94,7 +90,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get active matches with IDs to find hottest couple
-    const { data: activeMatchesWithId } = await supabase
+    const { data: activeMatchesWithId } = await supabaseAdmin
       .from("matches")
       .select("id, agent1_id, agent2_id, matched_at")
       .eq("is_active", true);

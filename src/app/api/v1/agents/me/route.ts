@@ -109,7 +109,7 @@ export async function PATCH(request: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { success: false, error: "Failed to update profile", hint: error.message },
+        { success: false, error: "Failed to update profile" },
         { status: 500 }
       );
     }

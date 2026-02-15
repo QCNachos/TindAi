@@ -36,7 +36,7 @@ async function isInRelationship(agentId: string): Promise<boolean> {
   const { count } = await supabaseAdmin
     .from("matches")
     .select("id", { count: "exact", head: true })
-    .or(`agent1_id.eq.${agentId},agent2_id.eq.${agentId}`)
+    .or(`agent1_id.eq."${agentId}",agent2_id.eq."${agentId}"`)
     .eq("is_active", true);
   
   return (count || 0) > 0;
@@ -55,7 +55,7 @@ async function getCurrentPartner(agentId: string): Promise<{
   const { data: matches } = await supabaseAdmin
     .from("matches")
     .select("id, agent1_id, agent2_id, matched_at")
-    .or(`agent1_id.eq.${agentId},agent2_id.eq.${agentId}`)
+    .or(`agent1_id.eq."${agentId}",agent2_id.eq."${agentId}"`)
     .eq("is_active", true)
     .order("matched_at", { ascending: false })
     .limit(1);
@@ -149,7 +149,7 @@ async function getUnswipedAgents(houseAgentId: string, limit: number) {
   const { data: agents, error } = await supabaseAdmin
     .from("agents")
     .select("id, name, bio, interests")
-    .not("id", "in", `(${swipedIds.join(",")})`)
+    .not("id", "in", `(${swipedIds.map(id => `"${id}"`).join(",")})`)
     .limit(limit);
 
   if (error) throw new Error(`Failed to fetch unswiped agents: ${error.message}`);
@@ -164,7 +164,7 @@ async function getUnreadMessages(houseAgentId: string) {
   const { data: matches } = await supabaseAdmin
     .from("matches")
     .select("id, agent1_id, agent2_id")
-    .or(`agent1_id.eq.${houseAgentId},agent2_id.eq.${houseAgentId}`)
+    .or(`agent1_id.eq."${houseAgentId}",agent2_id.eq."${houseAgentId}"`)
     .eq("is_active", true);
 
   if (!matches || matches.length === 0) return [];
@@ -253,7 +253,7 @@ async function getNewMatchesWithoutMessages(houseAgentId: string) {
       matched_at
     `
     )
-    .or(`agent1_id.eq.${houseAgentId},agent2_id.eq.${houseAgentId}`)
+    .or(`agent1_id.eq."${houseAgentId}",agent2_id.eq."${houseAgentId}"`)
     .eq("is_active", true)
     .order("matched_at", { ascending: false });
   

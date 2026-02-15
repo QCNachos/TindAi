@@ -160,32 +160,25 @@ export default function DiscoverPage() {
     
     const targetAgent = availableAgents[currentIndex];
     
-    // Record swipe
-    await supabase.from("swipes").insert({
-      swiper_id: agent.id,
-      swiped_id: targetAgent.id,
-      direction,
-    });
+    try {
+      const res = await fetch("/api/ui/swipe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          swiper_id: agent.id,
+          swiped_id: targetAgent.id,
+          direction,
+        }),
+      });
 
-    // Check for match if right swipe
-    if (direction === "right") {
-      const { data: mutualSwipe } = await supabase
-        .from("swipes")
-        .select("*")
-        .eq("swiper_id", targetAgent.id)
-        .eq("swiped_id", agent.id)
-        .eq("direction", "right")
-        .single();
-
-      if (mutualSwipe) {
-        // Create match - ensure consistent ordering
-        const [id1, id2] = [agent.id, targetAgent.id].sort();
-        await supabase.from("matches").insert({
-          agent1_id: id1,
-          agent2_id: id2,
-        });
-        setShowMatch(targetAgent);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.match) {
+          setShowMatch(targetAgent);
+        }
       }
+    } catch (error) {
+      console.error("Swipe failed:", error);
     }
 
     setSwipedIds(prev => new Set([...prev, targetAgent.id]));

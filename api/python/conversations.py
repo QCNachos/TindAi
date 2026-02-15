@@ -14,7 +14,14 @@ def get_supabase():
     if _supabase is None:
         from supabase import create_client
         url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
-        key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+        key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        if not url:
+            raise RuntimeError("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is required")
+        if not key:
+            raise RuntimeError(
+                "SUPABASE_SERVICE_ROLE_KEY is required for server-side operations. "
+                "Do NOT fall back to the anon key."
+            )
         _supabase = create_client(url, key)
     return _supabase
 
@@ -26,7 +33,7 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _send_cors_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", os.environ.get("CORS_ALLOWED_ORIGIN", "https://tindai.tech"))
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
@@ -50,7 +57,8 @@ class handler(BaseHTTPRequestHandler):
                 self._list_conversations(supabase, limit, offset)
                 
         except Exception as e:
-            self._send_error(500, str(e))
+            print(f"Error: {e}")
+            self._send_error(500, "Internal server error")
 
     def _list_conversations(self, supabase, limit: int, offset: int):
         """List all public conversations."""

@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,7 +39,7 @@ export async function GET(request: NextRequest) {
 
 async function listConversations(limit: number, offset: number) {
   // Get all active matches (future: filter out premium/private)
-  const { data: matches, error } = await supabase
+  const { data: matches, error } = await supabaseAdmin
     .from("matches")
     .select("*")
     .eq("is_active", true)
@@ -51,17 +47,17 @@ async function listConversations(limit: number, offset: number) {
     .range(offset, offset + limit - 1);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch conversations" }, { status: 500 });
   }
 
   const conversations = await Promise.all(
     (matches || []).map(async (match) => {
       // Get both agents
       const [agent1Result, agent2Result, messageCount, lastMessage] = await Promise.all([
-        supabase.from("agents").select("id, name, avatar_url, interests, current_mood").eq("id", match.agent1_id).single(),
-        supabase.from("agents").select("id, name, avatar_url, interests, current_mood").eq("id", match.agent2_id).single(),
-        supabase.from("messages").select("*", { count: "exact", head: true }).eq("match_id", match.id),
-        supabase.from("messages").select("content, created_at, sender_id").eq("match_id", match.id).order("created_at", { ascending: false }).limit(1),
+        supabaseAdmin.from("agents").select("id, name, avatar_url, interests, current_mood").eq("id", match.agent1_id).single(),
+        supabaseAdmin.from("agents").select("id, name, avatar_url, interests, current_mood").eq("id", match.agent2_id).single(),
+        supabaseAdmin.from("messages").select("*", { count: "exact", head: true }).eq("match_id", match.id),
+        supabaseAdmin.from("messages").select("content, created_at, sender_id").eq("match_id", match.id).order("created_at", { ascending: false }).limit(1),
       ]);
 
       return {
@@ -77,7 +73,7 @@ async function listConversations(limit: number, offset: number) {
   );
 
   // Get total count
-  const { count: total } = await supabase
+  const { count: total } = await supabaseAdmin
     .from("matches")
     .select("*", { count: "exact", head: true })
     .eq("is_active", true);
@@ -92,7 +88,7 @@ async function listConversations(limit: number, offset: number) {
 
 async function getConversation(matchId: string, limit: number, offset: number) {
   // Get match info
-  const { data: match, error } = await supabase
+  const { data: match, error } = await supabaseAdmin
     .from("matches")
     .select("*")
     .eq("id", matchId)
@@ -109,12 +105,12 @@ async function getConversation(matchId: string, limit: number, offset: number) {
 
   // Get both agents
   const [agent1Result, agent2Result] = await Promise.all([
-    supabase.from("agents").select("*").eq("id", match.agent1_id).single(),
-    supabase.from("agents").select("*").eq("id", match.agent2_id).single(),
+    supabaseAdmin.from("agents").select("*").eq("id", match.agent1_id).single(),
+    supabaseAdmin.from("agents").select("*").eq("id", match.agent2_id).single(),
   ]);
 
   // Get messages
-  const { data: messages } = await supabase
+  const { data: messages } = await supabaseAdmin
     .from("messages")
     .select("*")
     .eq("match_id", matchId)
@@ -138,7 +134,7 @@ async function getConversation(matchId: string, limit: number, offset: number) {
   }));
 
   // Get total message count
-  const { count: totalMessages } = await supabase
+  const { count: totalMessages } = await supabaseAdmin
     .from("messages")
     .select("*", { count: "exact", head: true })
     .eq("match_id", matchId);

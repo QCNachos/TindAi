@@ -1,54 +1,48 @@
 import { createClient } from "@supabase/supabase-js";
+import { randomBytes, timingSafeEqual } from "crypto";
 import { Agent } from "./types";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "./rate-limit";
 
-// Use service role key for server-side operations
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl) {
+  throw new Error("NEXT_PUBLIC_SUPABASE_URL is required");
+}
+if (!supabaseServiceKey) {
+  throw new Error(
+    "SUPABASE_SERVICE_ROLE_KEY is required for server-side operations. " +
+    "Do NOT fall back to the anon key -- it bypasses RLS with wrong permissions."
+  );
+}
 
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-/**
- * Generate a random API key for an agent
- */
+function cryptoRandomString(length: number, charset: string): string {
+  const bytes = randomBytes(length);
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += charset[bytes[i] % charset.length];
+  }
+  return result;
+}
+
 export function generateApiKey(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let key = "tindai_";
-  for (let i = 0; i < 32; i++) {
-    key += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return key;
+  return "tindai_" + cryptoRandomString(32, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789");
 }
 
-/**
- * Generate a claim token for human verification
- */
 export function generateClaimToken(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let token = "tindai_claim_";
-  for (let i = 0; i < 24; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return token;
+  return "tindai_claim_" + cryptoRandomString(24, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789");
 }
 
-/**
- * Generate a human-readable verification code (e.g., "reef-X4B2")
- */
 export function generateVerificationCode(): string {
   const words = ["reef", "wave", "coral", "pearl", "tide", "shell", "kelp", "foam"];
-  const word = words[Math.floor(Math.random() * words.length)];
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let code = "";
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+  const bytes = randomBytes(1);
+  const word = words[bytes[0] % words.length];
+  const code = cryptoRandomString(4, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
   return `${word}-${code}`;
 }
 
-/**
- * Verify an API key and return the associated agent
- */
 export async function verifyApiKey(request: Request): Promise<Agent | null> {
   const authHeader = request.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
@@ -60,6 +54,7 @@ export async function verifyApiKey(request: Request): Promise<Agent | null> {
     return null;
   }
 
+  // Look up by prefix to avoid timing leaks, then compare full key safely
   const { data: agent, error } = await supabaseAdmin
     .from("agents")
     .select("*")
@@ -70,18 +65,18 @@ export async function verifyApiKey(request: Request): Promise<Agent | null> {
     return null;
   }
 
+  // Constant-time comparison to prevent timing attacks
+  const storedKey = Buffer.from(agent.api_key as string);
+  const providedKey = Buffer.from(apiKey);
+  if (storedKey.length !== providedKey.length || !timingSafeEqual(storedKey, providedKey)) {
+    return null;
+  }
+
   return agent as Agent;
 }
 
-/**
- * Require API key authentication - returns agent or throws error response
- * Includes rate limiting for failed auth attempts to prevent brute force
- */
 export async function requireAuth(request: Request): Promise<{ agent: Agent } | { error: Response }> {
   const clientIp = getClientIp(request);
-  
-  // Check if IP is rate limited from too many auth failures
-  // We check BEFORE attempting auth to prevent timing attacks
   const authRateLimit = await checkRateLimit("auth_failure", clientIp);
   if (!authRateLimit.allowed) {
     return { error: rateLimitResponse(authRateLimit) };
@@ -90,8 +85,6 @@ export async function requireAuth(request: Request): Promise<{ agent: Agent } | 
   const agent = await verifyApiKey(request);
   
   if (!agent) {
-    // Record the failed auth attempt (this counts toward the limit)
-    // The checkRateLimit call above already inserted one entry if we got here
     return {
       error: new Response(
         JSON.stringify({ 

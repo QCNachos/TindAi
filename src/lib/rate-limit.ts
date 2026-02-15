@@ -1,11 +1,6 @@
 import { supabase } from './supabase';
 
-/**
- * Rate Limiting Configuration
- * 
- * Philosophy: Loose enough to allow growth, tight enough to prevent abuse.
- * All limits are per time window (sliding window approach).
- */
+// Rate limit configs by action type. Sliding window approach.
 
 export interface RateLimitConfig {
   // Max requests allowed in the time window
@@ -16,71 +11,15 @@ export interface RateLimitConfig {
   keyType: 'ip' | 'agent' | 'api_key';
 }
 
-// Rate limit configurations by action type
 export const RATE_LIMITS: Record<string, RateLimitConfig> = {
-  // Registration - prevent spam accounts
-  // 10 per hour per IP is generous for humans registering agents
-  'register': {
-    maxRequests: 10,
-    windowSeconds: 3600, // 1 hour
-    keyType: 'ip',
-  },
-  
-  // Auth failures - prevent brute force
-  // 20 failed attempts per 15 mins before lockout
-  'auth_failure': {
-    maxRequests: 20,
-    windowSeconds: 900, // 15 minutes
-    keyType: 'ip',
-  },
-  
-  // Swipes - prevent abuse/spam swiping
-  // 200 per hour is ~3 per minute, reasonable for active agent
-  'swipe': {
-    maxRequests: 200,
-    windowSeconds: 3600, // 1 hour
-    keyType: 'agent',
-  },
-  
-  // Messages per match - prevent conversation spam
-  // 100 per hour allows active chatting
-  'message': {
-    maxRequests: 100,
-    windowSeconds: 3600, // 1 hour
-    keyType: 'agent',
-  },
-  
-  // General API calls - prevent DoS
-  // 300 per minute per API key is generous
-  'api_general': {
-    maxRequests: 300,
-    windowSeconds: 60, // 1 minute
-    keyType: 'api_key',
-  },
-  
-  // Unauthenticated API calls - generous for dashboard polling
-  // 300 per minute per IP (5 calls every 10 seconds = 30/min with plenty of buffer)
-  'api_unauth': {
-    maxRequests: 300,
-    windowSeconds: 60, // 1 minute
-    keyType: 'ip',
-  },
-  
-  // Profile updates - prevent spam updates
-  // 20 per hour is plenty
-  'profile_update': {
-    maxRequests: 20,
-    windowSeconds: 3600, // 1 hour
-    keyType: 'agent',
-  },
-  
-  // Waitlist submissions - prevent spam
-  // 5 per hour per IP
-  'waitlist': {
-    maxRequests: 5,
-    windowSeconds: 3600, // 1 hour
-    keyType: 'ip',
-  },
+  'register':       { maxRequests: 10,  windowSeconds: 3600, keyType: 'ip' },
+  'auth_failure':   { maxRequests: 20,  windowSeconds: 900,  keyType: 'ip' },
+  'swipe':          { maxRequests: 200, windowSeconds: 3600, keyType: 'agent' },
+  'message':        { maxRequests: 100, windowSeconds: 3600, keyType: 'agent' },
+  'api_general':    { maxRequests: 300, windowSeconds: 60,   keyType: 'api_key' },
+  'api_unauth':     { maxRequests: 300, windowSeconds: 60,   keyType: 'ip' },
+  'profile_update': { maxRequests: 20,  windowSeconds: 3600, keyType: 'agent' },
+  'waitlist':       { maxRequests: 5,   windowSeconds: 3600, keyType: 'ip' },
 };
 
 interface RateLimitResult {
@@ -120,8 +59,8 @@ export async function checkRateLimit(
     
     if (countError) {
       console.error('Rate limit count error:', countError);
-      // On error, allow but log (fail open for growth)
-      return { allowed: true, remaining: config.maxRequests, resetAt: new Date() };
+      // Fail closed: deny on DB errors to prevent abuse during outages
+      return { allowed: false, remaining: 0, resetAt: new Date(now.getTime() + 60_000), retryAfterSeconds: 60 };
     }
     
     const currentCount = count || 0;
@@ -174,8 +113,8 @@ export async function checkRateLimit(
     };
   } catch (error) {
     console.error('Rate limit error:', error);
-    // Fail open - allow request but log
-    return { allowed: true, remaining: config.maxRequests, resetAt: new Date() };
+    // Fail closed: deny on unexpected errors to prevent abuse
+    return { allowed: false, remaining: 0, resetAt: new Date(Date.now() + 60_000), retryAfterSeconds: 60 };
   }
 }
 

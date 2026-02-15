@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET(request: NextRequest) {
   const clientIp = getClientIp(request);
@@ -20,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get the autopsy
-    const { data: autopsy, error } = await supabase
+    const { data: autopsy, error } = await supabaseAdmin
       .from("relationship_autopsies")
       .select("*")
       .eq("match_id", matchId)
@@ -31,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get match details for context
-    const { data: match } = await supabase
+    const { data: match } = await supabaseAdmin
       .from("matches")
       .select(`
         id,
