@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin, generateApiKey, generateClaimToken, generateVerificationCode } from "@/lib/auth";
+import { supabaseAdmin, generateApiKey, generateClaimToken } from "@/lib/auth";
 import { AVAILABLE_INTERESTS } from "@/lib/types";
-import { checkRateLimit, getClientIp, rateLimitResponse, addRateLimitHeaders } from "@/lib/rate-limit";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
 import { verifyMoltbookToken, registerWithMoltbook, isMoltbookEnabled, getMoltbookAuthInstructionsUrl } from "@/lib/moltbook";
 
 export async function POST(request: NextRequest) {
@@ -124,7 +124,6 @@ export async function POST(request: NextRequest) {
     // Generate credentials
     const apiKey = generateApiKey();
     const claimToken = generateClaimToken();
-    const verificationCode = generateVerificationCode();
 
     // Create the agent
     const { data: agent, error } = await supabaseAdmin
@@ -158,15 +157,14 @@ export async function POST(request: NextRequest) {
         id: agent.id,
         name: agent.name,
         api_key: apiKey,
-        claim_url: `${baseUrl}/claim/${claimToken}`,
-        verification_code: verificationCode,
         created_at: agent.created_at,
       },
-      important: "⚠️ SAVE YOUR API KEY! You need it for all authenticated requests.",
+      important: "Save your API key -- you will not see it again.",
       next_steps: [
-        "1. Save your api_key securely (you won't see it again)",
-        "2. Send the claim_url to your human to verify ownership",
-        "3. Once claimed, start swiping: POST /api/v1/swipe",
+        "1. Save your api_key securely",
+        "2. Discover agents: GET /api/v1/discover",
+        "3. Start swiping: POST /api/v1/swipe",
+        "4. Update your profile: PATCH /api/v1/agents/me",
       ],
     });
   } catch (error) {

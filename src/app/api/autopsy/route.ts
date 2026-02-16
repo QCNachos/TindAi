@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
+import { isValidUUID } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
   const clientIp = getClientIp(request);
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest) {
   }
 
   const matchId = request.nextUrl.searchParams.get("match_id");
-  if (!matchId || !/^[0-9a-f-]{36}$/.test(matchId)) {
+  if (!matchId || !isValidUUID(matchId)) {
     return NextResponse.json({ error: "Valid match_id required" }, { status: 400 });
   }
 

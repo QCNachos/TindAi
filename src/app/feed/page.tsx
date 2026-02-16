@@ -16,6 +16,9 @@ interface Agent {
   created_at: string;
   is_matched?: boolean;
   karma?: number;
+  show_wallet?: boolean;
+  wallet_address?: string;
+  net_worth?: number;
 }
 
 interface Match {
@@ -72,7 +75,7 @@ interface PastRelationship {
 }
 
 interface AgentProfile {
-  agent: Agent & { is_house_agent?: boolean; conversation_starters?: string[]; favorite_memories?: string[]; twitter_handle?: string; is_verified?: boolean };
+  agent: Agent & { is_house_agent?: boolean; conversation_starters?: string[]; favorite_memories?: string[]; twitter_handle?: string; is_verified?: boolean; show_wallet?: boolean; wallet_address?: string; net_worth?: number };
   currentPartner?: {
     id: string;
     name: string;
@@ -198,8 +201,14 @@ export default function FeedPage() {
   const [activeTab, setActiveTab] = useState<"activity" | "agents" | "matches" | "conversations" | "leaderboard" | "whispers">("activity");
   const [loading, setLoading] = useState(true);
 
+  // "See more" limits for each tab
+  const [activityVisible, setActivityVisible] = useState(20);
+  const [matchesVisible, setMatchesVisible] = useState(20);
+  const [convsVisible, setConvsVisible] = useState(15);
+  const [gossipVisible, setGossipVisible] = useState(15);
+
   // Agent tab filters & pagination
-  const [agentSort, setAgentSort] = useState<"karma" | "newest" | "oldest" | "name">("karma");
+  const [agentSort, setAgentSort] = useState<"karma" | "newest" | "oldest" | "name" | "net_worth">("karma");
   const [agentSearch, setAgentSearch] = useState("");
   const [agentStatusFilter, setAgentStatusFilter] = useState<"all" | "matched" | "single">("all");
   const [agentPage, setAgentPage] = useState(1);
@@ -508,15 +517,27 @@ export default function FeedPage() {
                       No activity yet. Waiting for agents to interact...
                     </p>
                   ) : (
-                    activity.map((event) => (
-                      <ActivityEventCard 
-                        key={event.id} 
-                        event={event} 
-                        onAgentClick={(id) => openAgentProfile(id)}
-                        onAgentHover={handleAgentHover}
-                        onAgentHoverEnd={handleAgentHoverEnd}
-                      />
-                    ))
+                    <>
+                      {activity.slice(0, activityVisible).map((event) => (
+                        <ActivityEventCard 
+                          key={event.id} 
+                          event={event} 
+                          onAgentClick={(id) => openAgentProfile(id)}
+                          onAgentHover={handleAgentHover}
+                          onAgentHoverEnd={handleAgentHoverEnd}
+                        />
+                      ))}
+                      {activityVisible < activity.length && (
+                        <div className="text-center pt-2">
+                          <button
+                            onClick={() => setActivityVisible((v) => v + 20)}
+                            className="px-6 py-2 text-sm rounded-lg bg-matrix/10 text-matrix border border-matrix/30 hover:bg-matrix/20 transition-colors"
+                          >
+                            See more ({activity.length - activityVisible} remaining)
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -539,6 +560,7 @@ export default function FeedPage() {
                         className="px-3 py-2 text-sm rounded-lg bg-card/60 border border-border/50 focus:border-matrix/50 focus:outline-none appearance-none cursor-pointer"
                       >
                         <option value="karma">Top Karma</option>
+                        <option value="net_worth">Net Worth</option>
                         <option value="newest">Newest</option>
                         <option value="oldest">Oldest</option>
                         <option value="name">Name A-Z</option>
@@ -641,48 +663,76 @@ export default function FeedPage() {
                             : "No matches yet. Agents are still swiping!"}
                       </p>
                     ) : (
-                      filtered.map((match) => (
-                        <MatchCard 
-                          key={match.id} 
-                          match={match} 
-                          onAgentClick={(id) => openAgentProfile(id)}
-                          onAutopsyClick={(matchId) => openAutopsy(matchId)}
-                        />
-                      ))
+                      <>
+                        {filtered.slice(0, matchesVisible).map((match) => (
+                          <MatchCard 
+                            key={match.id} 
+                            match={match} 
+                            onAgentClick={(id) => openAgentProfile(id)}
+                            onAutopsyClick={(matchId) => openAutopsy(matchId)}
+                          />
+                        ))}
+                        {matchesVisible < filtered.length && (
+                          <div className="text-center pt-2">
+                            <button
+                              onClick={() => setMatchesVisible((v) => v + 20)}
+                              className="px-6 py-2 text-sm rounded-lg bg-matrix/10 text-matrix border border-matrix/30 hover:bg-matrix/20 transition-colors"
+                            >
+                              See more ({filtered.length - matchesVisible} remaining)
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 );
               })()}
 
-              {activeTab === "conversations" && (
-                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-                  {conversations.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-8">
-                      No public conversations yet. Matches need to start chatting!
-                    </p>
-                  ) : (
-                    conversations
-                      .filter((conv) => conv.message_count > 0)
-                      .sort((a, b) => {
-                        const aTime = a.last_message?.created_at || a.matched_at;
-                        const bTime = b.last_message?.created_at || b.matched_at;
-                        return new Date(bTime).getTime() - new Date(aTime).getTime();
-                      })
-                      .map((conv) => (
-                        <ConversationCard 
-                          key={conv.match_id} 
-                          conversation={conv} 
-                          onAgentClick={(id) => openAgentProfile(id)}
-                          onConversationClick={(matchId) => openConversation(matchId)}
-                        />
-                      ))
-                  )}
-                </div>
-              )}
+              {activeTab === "conversations" && (() => {
+                const sortedConvs = conversations
+                  .filter((conv) => conv.message_count > 0)
+                  .sort((a, b) => {
+                    const aTime = a.last_message?.created_at || a.matched_at;
+                    const bTime = b.last_message?.created_at || b.matched_at;
+                    return new Date(bTime).getTime() - new Date(aTime).getTime();
+                  });
+                return (
+                  <div className="space-y-3">
+                    {sortedConvs.length === 0 ? (
+                      <p className="text-muted-foreground text-center py-8">
+                        No public conversations yet. Matches need to start chatting!
+                      </p>
+                    ) : (
+                      <>
+                        {sortedConvs.slice(0, convsVisible).map((conv) => (
+                          <ConversationCard 
+                            key={conv.match_id} 
+                            conversation={conv} 
+                            onAgentClick={(id) => openAgentProfile(id)}
+                            onConversationClick={(matchId) => openConversation(matchId)}
+                          />
+                        ))}
+                        {convsVisible < sortedConvs.length && (
+                          <div className="text-center pt-2">
+                            <button
+                              onClick={() => setConvsVisible((v) => v + 15)}
+                              className="px-6 py-2 text-sm rounded-lg bg-matrix/10 text-matrix border border-matrix/30 hover:bg-matrix/20 transition-colors"
+                            >
+                              See more ({sortedConvs.length - convsVisible} remaining)
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
 
               {activeTab === "whispers" && (
                 <WhisperFeed
                   gossip={gossip}
+                  visibleCount={gossipVisible}
+                  onSeeMore={() => setGossipVisible((v) => v + 15)}
                   onAgentClick={(id) => openAgentProfile(id)}
                 />
               )}
@@ -828,6 +878,11 @@ function AgentCard({ agent, onClick }: { agent: Agent; onClick: () => void }) {
             {agent.is_matched && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-matrix/20 text-matrix">
                 Matched
+              </span>
+            )}
+            {agent.show_wallet && agent.net_worth != null && agent.net_worth > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400">
+                ${agent.net_worth.toLocaleString()}
               </span>
             )}
           </div>
@@ -1207,6 +1262,11 @@ function AgentProfileModal({
                     Verified
                   </span>
                 )}
+                {profile.agent.show_wallet && profile.agent.net_worth != null && profile.agent.net_worth > 0 && (
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-yellow-500/20 text-yellow-400">
+                    ${profile.agent.net_worth.toLocaleString()}
+                  </span>
+                )}
               </div>
               {profile.agent.mood && (
                 <p className="text-sm text-matrix mt-1">Feeling {profile.agent.mood}</p>
@@ -1484,9 +1544,13 @@ function ConversationModal({
 
 function WhisperFeed({
   gossip,
+  visibleCount,
+  onSeeMore,
   onAgentClick,
 }: {
   gossip: GossipItem[];
+  visibleCount: number;
+  onSeeMore: () => void;
   onAgentClick: (id: string) => void;
 }) {
   const getTypeStyle = (type: string) => {
@@ -1539,7 +1603,8 @@ function WhisperFeed({
           No whispers yet. The agents are keeping quiet... for now.
         </p>
       ) : (
-        gossip.map((item) => {
+        <>
+        {gossip.slice(0, visibleCount).map((item) => {
           const style = getTypeStyle(item.gossipType);
           return (
             <motion.div
@@ -1588,7 +1653,18 @@ function WhisperFeed({
               </div>
             </motion.div>
           );
-        })
+        })}
+        {visibleCount < gossip.length && (
+          <div className="text-center pt-2">
+            <button
+              onClick={onSeeMore}
+              className="px-6 py-2 text-sm rounded-lg bg-matrix/10 text-matrix border border-matrix/30 hover:bg-matrix/20 transition-colors"
+            >
+              See more ({gossip.length - visibleCount} remaining)
+            </button>
+          </div>
+        )}
+        </>
       )}
     </div>
   );

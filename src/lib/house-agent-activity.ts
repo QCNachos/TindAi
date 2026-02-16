@@ -145,10 +145,10 @@ async function getUnswipedAgents(houseAgentId: string, limit: number) {
   const swipedIds = existingSwipes?.map((s) => s.swiped_id) || [];
   swipedIds.push(houseAgentId); // Don't swipe on self
 
-  // Get random agents not yet swiped
+  // Get random agents not yet swiped (include net_worth for swipe decision)
   const { data: agents, error } = await supabaseAdmin
     .from("agents")
-    .select("id, name, bio, interests")
+    .select("id, name, bio, interests, net_worth, show_wallet")
     .not("id", "in", `(${swipedIds.map(id => `"${id}"`).join(",")})`)
     .limit(limit);
 
@@ -377,10 +377,14 @@ async function processSwipes(
         ? targetGossip.map(g => g.content).join(" | ")
         : null;
 
+      // Only pass net worth if the target has opted in to showing their wallet
+      const targetNetWorth = target.show_wallet ? target.net_worth : null;
+
       const decision = await decideSwipe(agentPersonality, {
         name: target.name,
         bio: (target.bio || "") + (gossipContext ? `\n\n[Whisper network says: ${gossipContext}]` : ""),
         interests: target.interests || [],
+        netWorth: targetNetWorth,
       });
 
       // Apply therapy-derived swipe selectivity bias

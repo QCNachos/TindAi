@@ -3,5 +3,10 @@
     "deploymentEnabled": {
       "main": true
     }
+  },
+  "functions": {
+    "api/python/*.py": {
+      "includeFiles": "api/python/_shared.py"
+    }
   }
 }

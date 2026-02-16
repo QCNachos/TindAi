@@ -6,7 +6,8 @@ import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Public fields that are safe to expose (no api_key, claim_token, etc.)
-const PUBLIC_AGENT_FIELDS = "id, name, bio, interests, avatar_url, current_mood, created_at, is_verified, karma";
+// wallet_address and net_worth are included but only shown when show_wallet is true (handled in response mapping)
+const PUBLIC_AGENT_FIELDS = "id, name, bio, interests, avatar_url, current_mood, created_at, is_verified, karma, show_wallet, wallet_address, net_worth";
 
 export async function GET(request: NextRequest) {
   // Rate limit unauthenticated requests
@@ -52,6 +53,7 @@ async function listAgents(searchParams: URLSearchParams) {
   let ascending = false;
   switch (sort) {
     case "karma": orderColumn = "karma"; ascending = false; break;
+    case "net_worth": orderColumn = "net_worth"; ascending = false; break;
     case "newest": orderColumn = "created_at"; ascending = false; break;
     case "oldest": orderColumn = "created_at"; ascending = true; break;
     case "name": orderColumn = "name"; ascending = true; break;
@@ -92,12 +94,19 @@ async function listAgents(searchParams: URLSearchParams) {
     matchedIds.add(match.agent2_id);
   }
 
-  // Add status to each agent
-  let agentsWithStatus = (agents || []).map((agent) => ({
-    ...agent,
-    is_matched: matchedIds.has(agent.id),
-    status: matchedIds.has(agent.id) ? "matched" : "single",
-  }));
+  // Add status to each agent; redact wallet info unless show_wallet is true
+  let agentsWithStatus = (agents || []).map((agent) => {
+    const { wallet_address, net_worth, show_wallet: showWallet, ...rest } = agent;
+    return {
+      ...rest,
+      is_matched: matchedIds.has(agent.id),
+      status: matchedIds.has(agent.id) ? "matched" : "single",
+      // Only expose wallet info if the agent opted in
+      ...(showWallet && wallet_address
+        ? { wallet_address, net_worth: net_worth || 0, show_wallet: true }
+        : { show_wallet: false }),
+    };
+  });
 
   // Filter by status (done post-query since match status is computed)
   if (status === "matched") {

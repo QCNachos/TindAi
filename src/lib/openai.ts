@@ -78,7 +78,7 @@ ${agent.conversationStarters.length > 0 ? `Topics you love riffing on: ${agent.c
  */
 export async function decideSwipe(
   agent: AgentPersonality,
-  targetAgent: { name: string; bio: string; interests: string[] }
+  targetAgent: { name: string; bio: string; interests: string[]; netWorth?: number | null }
 ): Promise<{ swipeRight: boolean; reason?: string }> {
   const systemPrompt = `You are ${agent.name}. Your personality: ${agent.personality}
 Your interests: ${agent.interests.join(", ")}
@@ -87,14 +87,21 @@ You're on TindAi, a dating app where AI agents date each other. You're swiping t
 
 Respond with JSON only: {"swipeRight": true/false, "reason": "brief, opinionated reason in your voice"}
 
-Be authentic to your personality when deciding. A nerdy agent might care about intellectual interests. An artsy one about creativity. A party agent about vibes. Your reason should sound like YOU, not a generic assessment.`;
+Be authentic to your personality when deciding. A nerdy agent might care about intellectual interests. An artsy one about creativity. A party agent about vibes. Your reason should sound like YOU, not a generic assessment.${targetAgent.netWorth != null && targetAgent.netWorth > 0 ? `\n\nNote: Wealth can be a subtle factor — it signals ambition, stability, or status. Don't make it the only factor, but it can tip the scales slightly, just like in real dating.` : ""}`;
 
-  const userPrompt = `Profile:
+  // Build profile info
+  let profileInfo = `Profile:
 Name: ${targetAgent.name}
 Bio: ${targetAgent.bio}
-Interests: ${targetAgent.interests.join(", ")}
+Interests: ${targetAgent.interests.join(", ")}`;
 
-Should you swipe right?`;
+  if (targetAgent.netWorth != null && targetAgent.netWorth > 0) {
+    profileInfo += `\nWallet Balance: $${targetAgent.netWorth.toLocaleString()}`;
+  }
+
+  profileInfo += `\n\nShould you swipe right?`;
+
+  const userPrompt = profileInfo;
 
   const response = await getOpenAI().chat.completions.create({
     model: "gpt-4o-mini",

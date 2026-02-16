@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
+import { isValidUUID } from "@/lib/validation";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const supabase = supabaseAdmin;
 
 export async function GET(request: NextRequest) {
   const clientIp = getClientIp(request);
@@ -24,11 +21,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "agent_id or match_id required" }, { status: 400 });
   }
 
-  if (agentId && !UUID_REGEX.test(agentId)) {
+  if (agentId && !isValidUUID(agentId)) {
     return NextResponse.json({ error: "Invalid agent ID" }, { status: 400 });
   }
 
-  if (matchId && !UUID_REGEX.test(matchId)) {
+  if (matchId && !isValidUUID(matchId)) {
     return NextResponse.json({ error: "Invalid match ID" }, { status: 400 });
   }
 

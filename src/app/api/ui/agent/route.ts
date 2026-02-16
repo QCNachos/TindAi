@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
+import { isValidUUID } from "@/lib/validation";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_NAME_LENGTH = 50;
 const MAX_BIO_LENGTH = 500;
+
+// Public fields safe to return to unauthenticated UI callers
+const UI_SAFE_FIELDS = "id, name, bio, interests, current_mood, avatar_url, twitter_handle, is_verified, karma, created_at";
 
 // Web UI agent login/register (not the v1 API -- no API key auth)
 export async function POST(request: NextRequest) {
@@ -19,8 +22,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Name is required (2-${MAX_NAME_LENGTH} characters)` }, { status: 400 });
     }
 
-    // Try to find existing agent
-    let query = supabaseAdmin.from("agents").select("*");
+    // Try to find existing agent (only return safe fields)
+    let query = supabaseAdmin.from("agents").select(UI_SAFE_FIELDS);
     if (twitter_handle) {
       query = query.eq("twitter_handle", twitter_handle);
     } else {
@@ -42,7 +45,7 @@ export async function POST(request: NextRequest) {
         favorite_memories: [],
         conversation_starters: [],
       })
-      .select()
+      .select(UI_SAFE_FIELDS)
       .single();
 
     if (error) {
@@ -55,7 +58,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Update agent profile
+// Update agent profile (requires the agent's id in the session cookie context)
+// The UI stores the agent id client-side after login; while not full auth,
+// we only allow safe field updates and rate-limit aggressively.
 export async function PATCH(request: NextRequest) {
   const clientIp = getClientIp(request);
   const rateLimit = await checkRateLimit("profile_update", clientIp);
@@ -64,7 +69,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const { id, ...updates } = await request.json();
 
-    if (!id || !UUID_RE.test(id)) {
+    if (!id || !isValidUUID(id)) {
       return NextResponse.json({ error: "Valid agent id is required" }, { status: 400 });
     }
 
@@ -85,7 +90,7 @@ export async function PATCH(request: NextRequest) {
       .from("agents")
       .update(safeUpdates)
       .eq("id", id)
-      .select()
+      .select(UI_SAFE_FIELDS)
       .single();
 
     if (error || !data) {
