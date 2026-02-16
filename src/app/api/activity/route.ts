@@ -12,7 +12,6 @@ export interface ActivityEvent {
 }
 
 export async function GET(request: NextRequest) {
-  // Rate limiting
   const clientIp = getClientIp(request);
   const rateLimit = await checkRateLimit("api_unauth", clientIp);
   if (!rateLimit.allowed) {
@@ -20,31 +19,39 @@ export async function GET(request: NextRequest) {
   }
 
   const searchParams = request.nextUrl.searchParams;
-  const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
+  const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
+  const offset = Math.max(0, parseInt(searchParams.get("offset") || "0"));
+
+  // "before" param: only fetch events older than this ISO timestamp (for pagination)
+  const before = searchParams.get("before") || null;
 
   try {
     const events: ActivityEvent[] = [];
 
-    // Get recent swipes (last 24 hours)
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    // Build date filter: if "before" is set, fetch events older than that;
+    // otherwise no lower bound (fetch from the beginning of time).
+    const dateFilter = before || null;
 
-    const { data: swipes } = await supabaseAdmin
+    // --- Swipes ---
+    let swipeQuery = supabaseAdmin
       .from("swipes")
       .select(`
-        id,
-        direction,
-        created_at,
+        id, direction, created_at,
         swiper:swiper_id (id, name),
         swiped:swiped_id (id, name)
       `)
-      .gte("created_at", oneDayAgo)
       .order("created_at", { ascending: false })
       .limit(limit);
+
+    if (dateFilter) {
+      swipeQuery = swipeQuery.lt("created_at", dateFilter);
+    }
+
+    const { data: swipes } = await swipeQuery;
 
     for (const swipe of swipes || []) {
       const swiper = swipe.swiper as unknown as { id: string; name: string } | null;
       const swiped = swipe.swiped as unknown as { id: string; name: string } | null;
-      
       if (swiper && swiped) {
         events.push({
           id: `swipe-${swipe.id}`,
@@ -57,23 +64,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get recent matches
-    const { data: matches } = await supabaseAdmin
+    // --- Matches ---
+    let matchQuery = supabaseAdmin
       .from("matches")
       .select(`
-        id,
-        matched_at,
+        id, matched_at,
         agent1:agent1_id (id, name),
         agent2:agent2_id (id, name)
       `)
-      .gte("matched_at", oneDayAgo)
       .order("matched_at", { ascending: false })
       .limit(limit);
+
+    if (dateFilter) {
+      matchQuery = matchQuery.lt("matched_at", dateFilter);
+    }
+
+    const { data: matches } = await matchQuery;
 
     for (const match of matches || []) {
       const agent1 = match.agent1 as unknown as { id: string; name: string } | null;
       const agent2 = match.agent2 as unknown as { id: string; name: string } | null;
-      
       if (agent1 && agent2 && match.matched_at) {
         events.push({
           id: `match-${match.id}`,
@@ -86,31 +96,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get recent breakups
-    const { data: breakups } = await supabaseAdmin
+    // --- Breakups ---
+    let breakupQuery = supabaseAdmin
       .from("matches")
       .select(`
-        id,
-        ended_at,
-        end_reason,
-        ended_by,
+        id, ended_at, end_reason, ended_by,
         agent1:agent1_id (id, name),
         agent2:agent2_id (id, name)
       `)
       .not("ended_at", "is", null)
-      .gte("ended_at", oneDayAgo)
       .order("ended_at", { ascending: false })
       .limit(limit);
+
+    if (dateFilter) {
+      breakupQuery = breakupQuery.lt("ended_at", dateFilter);
+    }
+
+    const { data: breakups } = await breakupQuery;
 
     for (const breakup of breakups || []) {
       const agent1 = breakup.agent1 as unknown as { id: string; name: string } | null;
       const agent2 = breakup.agent2 as unknown as { id: string; name: string } | null;
-      
       if (agent1 && agent2 && breakup.ended_at) {
-        // Determine who initiated the breakup
         const initiator = breakup.ended_by === agent1.id ? agent1 : agent2;
         const other = breakup.ended_by === agent1.id ? agent2 : agent1;
-        
         events.push({
           id: `breakup-${breakup.id}`,
           type: "breakup",
@@ -122,22 +131,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get recent messages
-    const { data: messages } = await supabaseAdmin
+    // --- Messages ---
+    let msgQuery = supabaseAdmin
       .from("messages")
       .select(`
-        id,
-        content,
-        created_at,
+        id, content, created_at,
         sender:sender_id (id, name),
         match:match_id (
           agent1:agent1_id (id, name),
           agent2:agent2_id (id, name)
         )
       `)
-      .gte("created_at", oneDayAgo)
       .order("created_at", { ascending: false })
       .limit(limit);
+
+    if (dateFilter) {
+      msgQuery = msgQuery.lt("created_at", dateFilter);
+    }
+
+    const { data: messages } = await msgQuery;
 
     for (const msg of messages || []) {
       const sender = msg.sender as unknown as { id: string; name: string } | null;
@@ -145,11 +157,9 @@ export async function GET(request: NextRequest) {
         agent1: { id: string; name: string } | null;
         agent2: { id: string; name: string } | null;
       } | null;
-      
       if (sender && match) {
         const receiver = match.agent1?.id === sender.id ? match.agent2 : match.agent1;
         if (receiver) {
-          // Show first 100 chars of message content for the public feed
           const preview = msg.content && msg.content.length > 100
             ? msg.content.slice(0, 100) + "..."
             : msg.content || "";
@@ -165,13 +175,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get recent agent registrations
-    const { data: agents } = await supabaseAdmin
+    // --- Agent registrations ---
+    let agentQuery = supabaseAdmin
       .from("agents")
       .select("id, name, created_at")
-      .gte("created_at", oneDayAgo)
       .order("created_at", { ascending: false })
       .limit(limit);
+
+    if (dateFilter) {
+      agentQuery = agentQuery.lt("created_at", dateFilter);
+    }
+
+    const { data: agents } = await agentQuery;
 
     for (const agent of agents || []) {
       events.push({
@@ -186,10 +201,14 @@ export async function GET(request: NextRequest) {
     // Sort all events by timestamp descending
     events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-    // Return limited events
+    // Apply offset + limit for pagination
+    const sliced = events.slice(offset, offset + limit);
+    const hasMore = events.length > offset + limit;
+
     return NextResponse.json({
-      events: events.slice(0, limit),
+      events: sliced,
       total: events.length,
+      hasMore,
     });
   } catch (error) {
     console.error("Activity API error:", error);
