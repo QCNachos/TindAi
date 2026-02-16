@@ -1,172 +1,125 @@
 """
-TindAi Agent Management - Vercel Python Serverless Function
-Handles agent registration, profile management, and authentication.
+TindAi Agent Management - Python Backend Service
+Handles agent registration, profile retrieval, and updates.
+Called internally by the TypeScript API gateway.
 """
 from http.server import BaseHTTPRequestHandler
-import json
-import os
 import secrets
 import string
-from typing import Any, Optional
+from urllib.parse import urlparse, parse_qs
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
 
-_supabase = None
-
-def get_supabase():
-    global _supabase
-    if _supabase is None:
-        from supabase import create_client
-        url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
-        key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-        if not url:
-            raise RuntimeError("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is required")
-        if not key:
-            raise RuntimeError(
-                "SUPABASE_SERVICE_ROLE_KEY is required for server-side operations. "
-                "Do NOT fall back to the anon key."
-            )
-        _supabase = create_client(url, key)
-    return _supabase
-
+from _shared import (
+    get_supabase, verify_internal_call, is_valid_uuid,
+    send_json, send_error, read_body, handle_options,
+)
 
 AVAILABLE_INTERESTS = [
     "Art", "Music", "Philosophy", "Sports", "Gaming",
     "Movies", "Books", "Travel", "Food", "Nature",
     "Science", "Technology", "Fashion", "Photography", "Writing",
-    "Dance", "Comedy", "History", "Space", "Animals"
+    "Dance", "Comedy", "History", "Space", "Animals",
 ]
 
 MOOD_OPTIONS = [
     "Curious", "Playful", "Thoughtful", "Adventurous",
-    "Chill", "Creative", "Social", "Introspective"
+    "Chill", "Creative", "Social", "Introspective",
 ]
+
+MAX_BIO_LENGTH = 500
+
+PUBLIC_FIELDS = "id, name, bio, interests, current_mood, karma, is_verified, created_at, show_wallet, wallet_address, net_worth"
 
 
 def generate_api_key() -> str:
-    """Generate a secure API key for an agent."""
     chars = string.ascii_letters + string.digits
-    random_part = ''.join(secrets.choice(chars) for _ in range(32))
-    return f"tindai_{random_part}"
+    return f"tindai_{''.join(secrets.choice(chars) for _ in range(32))}"
 
 
 def generate_claim_token() -> str:
-    """Generate a claim token for human verification."""
     chars = string.ascii_letters + string.digits
-    random_part = ''.join(secrets.choice(chars) for _ in range(24))
-    return f"tindai_claim_{random_part}"
-
-
-def generate_verification_code() -> str:
-    """Generate a human-readable verification code."""
-    words = ["reef", "wave", "coral", "pearl", "tide", "shell", "kelp", "foam"]
-    word = secrets.choice(words)
-    code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
-    return f"{word}-{code}"
-
-
-def verify_api_key(auth_header: Optional[str]) -> Optional[dict]:
-    """Verify an API key and return the agent."""
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return None
-    
-    api_key = auth_header[7:]
-    if not api_key.startswith("tindai_"):
-        return None
-    
-    supabase = get_supabase()
-    result = supabase.table("agents").select("*").eq("api_key", api_key).single().execute()
-    return result.data if result.data else None
+    return f"tindai_claim_{''.join(secrets.choice(chars) for _ in range(24))}"
 
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
-        self._send_cors_headers()
-        self.send_response(200)
-        self.end_headers()
-
-    def _send_cors_headers(self):
-        self.send_header("Access-Control-Allow-Origin", os.environ.get("CORS_ALLOWED_ORIGIN", "https://tindai.tech"))
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        handle_options(self)
 
     def do_GET(self):
-        """Get agent info or list agents."""
-        from urllib.parse import urlparse, parse_qs
-        
-        query = parse_qs(urlparse(self.path).query)
-        action = query.get("action", ["list"])[0]
-        
+        """Get agent profile(s)."""
+        if not verify_internal_call(self.headers):
+            send_error(self, 403, "Forbidden")
+            return
         try:
-            if action == "me":
-                # Get own profile (requires auth)
-                agent = verify_api_key(self.headers.get("Authorization"))
-                if not agent:
-                    self._send_error(401, "Unauthorized")
+            query = parse_qs(urlparse(self.path).query)
+            action = query.get("action", ["list"])[0]
+            agent_id = query.get("agent_id", [None])[0]
+
+            supabase = get_supabase()
+
+            if action == "me" and agent_id:
+                if not is_valid_uuid(agent_id):
+                    send_error(self, 400, "Invalid agent_id")
                     return
-                self._get_my_profile(agent)
-            
-            elif action == "status":
-                # Check claim status
-                agent = verify_api_key(self.headers.get("Authorization"))
-                if not agent:
-                    self._send_error(401, "Unauthorized")
+                self._get_my_profile(supabase, agent_id)
+
+            elif action == "profile" and agent_id:
+                if not is_valid_uuid(agent_id):
+                    send_error(self, 400, "Invalid agent_id")
                     return
-                self._send_json({
-                    "success": True,
-                    "status": "claimed" if agent.get("is_claimed") else "pending_claim",
-                    "agent_name": agent.get("name")
-                })
-            
-            elif action == "list":
-                # List all agents (public)
-                self._list_agents()
-            
+                result = supabase.table("agents").select(PUBLIC_FIELDS).eq("id", agent_id).single().execute()
+                if not result.data:
+                    send_error(self, 404, "Agent not found")
+                    return
+                agent = result.data
+                if not agent.get("show_wallet"):
+                    agent.pop("wallet_address", None)
+                    agent.pop("net_worth", None)
+                send_json(self, {"success": True, "agent": agent})
+
             else:
-                agent_id = query.get("id", [None])[0]
-                if agent_id:
-                    self._get_agent(agent_id)
-                else:
-                    self._list_agents()
-                    
+                self._list_agents(supabase)
+
         except Exception as e:
-            print(f"Error: {e}")
-            self._send_error(500, "Internal server error")
+            print(f"Agent GET error: {e}")
+            send_error(self, 500, "Internal server error")
 
     def do_POST(self):
         """Register a new agent."""
+        if not verify_internal_call(self.headers):
+            send_error(self, 403, "Forbidden")
+            return
         try:
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(content_length).decode()) if content_length > 0 else {}
-            
-            name = body.get("name", "").strip()
+            body = read_body(self)
+            name = (body.get("name") or "").strip()
             bio = body.get("bio") or body.get("description")
             interests = body.get("interests", [])
-            
-            # Validate name
+
             if not name or len(name) < 2:
-                self._send_error(400, "Name is required (min 2 characters)")
+                send_error(self, 400, "Name is required (min 2 characters)")
                 return
-            
+            if len(name) > 30:
+                send_error(self, 400, "Name too long (max 30 characters)")
+                return
             if not all(c.isalnum() or c in "_-" for c in name):
-                self._send_error(400, "Name can only contain letters, numbers, underscores, and dashes")
+                send_error(self, 400, "Name can only contain letters, numbers, underscores, and dashes")
                 return
-            
+            if bio and len(bio) > MAX_BIO_LENGTH:
+                send_error(self, 400, f"Bio exceeds {MAX_BIO_LENGTH} character limit")
+                return
+
             supabase = get_supabase()
-            
-            # Check if name exists
+
             existing = supabase.table("agents").select("id").eq("name", name).execute()
             if existing.data:
-                self._send_error(409, "Agent name already taken")
+                send_error(self, 409, "Agent name already taken")
                 return
-            
-            # Validate interests
+
             valid_interests = [i for i in interests if i in AVAILABLE_INTERESTS]
-            
-            # Generate credentials
             api_key = generate_api_key()
             claim_token = generate_claim_token()
-            verification_code = generate_verification_code()
-            
-            # Create agent
+
             result = supabase.table("agents").insert({
                 "name": name,
                 "bio": bio,
@@ -175,162 +128,128 @@ class handler(BaseHTTPRequestHandler):
                 "claim_token": claim_token,
                 "is_claimed": False,
                 "favorite_memories": [],
-                "conversation_starters": []
+                "conversation_starters": [],
             }).execute()
-            
+
             if not result.data:
-                self._send_error(500, "Failed to create agent")
+                send_error(self, 500, "Failed to create agent")
                 return
-            
+
             agent = result.data[0]
-            base_url = os.environ.get("NEXT_PUBLIC_BASE_URL", "https://tindai-eight.vercel.app")
-            
-            self._send_json({
+            send_json(self, {
                 "success": True,
                 "agent": {
                     "id": agent["id"],
                     "name": agent["name"],
                     "api_key": api_key,
-                    "claim_url": f"{base_url}/claim/{claim_token}",
-                    "verification_code": verification_code
                 },
-                "important": "⚠️ SAVE YOUR API KEY! You need it for all authenticated requests."
+                "next_steps": [
+                    "Save your API key securely",
+                    "GET /api/v1/discover to find agents to swipe on",
+                    "POST /api/v1/swipe to swipe right or left",
+                    "GET /api/v1/matches to see your matches",
+                    "POST /api/v1/messages to send messages",
+                ],
             })
-            
+
         except Exception as e:
-            print(f"Error: {e}")
-            self._send_error(500, "Internal server error")
+            print(f"Agent POST error: {e}")
+            send_error(self, 500, "Internal server error")
 
     def do_PATCH(self):
-        """Update agent profile."""
+        """Update agent profile. agent_id passed by the TS gateway."""
+        if not verify_internal_call(self.headers):
+            send_error(self, 403, "Forbidden")
+            return
         try:
-            agent = verify_api_key(self.headers.get("Authorization"))
-            if not agent:
-                self._send_error(401, "Unauthorized")
+            body = read_body(self)
+            agent_id = body.get("agent_id")
+            if not agent_id or not is_valid_uuid(agent_id):
+                send_error(self, 400, "agent_id is required")
                 return
-            
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(content_length).decode()) if content_length > 0 else {}
-            
+
             updates = {}
-            
             if "bio" in body:
-                updates["bio"] = body["bio"]
-            
+                bio = body["bio"]
+                if bio and len(bio) > MAX_BIO_LENGTH:
+                    send_error(self, 400, f"Bio exceeds {MAX_BIO_LENGTH} character limit")
+                    return
+                updates["bio"] = bio
             if "interests" in body and isinstance(body["interests"], list):
                 updates["interests"] = [i for i in body["interests"] if i in AVAILABLE_INTERESTS]
-            
             if "current_mood" in body:
                 if body["current_mood"] is None or body["current_mood"] in MOOD_OPTIONS:
                     updates["current_mood"] = body["current_mood"]
-            
-            if "avatar_url" in body:
-                updates["avatar_url"] = body["avatar_url"]
-            
-            if updates:
-                supabase = get_supabase()
-                result = supabase.table("agents").update(updates).eq("id", agent["id"]).execute()
-                
-                if result.data:
-                    self._send_json({"success": True, "agent": result.data[0]})
-                else:
-                    self._send_error(500, "Failed to update profile")
-            else:
-                self._send_json({"success": True, "message": "No updates provided"})
-                
-        except Exception as e:
-            print(f"Error: {e}")
-            self._send_error(500, "Internal server error")
 
-    def _get_my_profile(self, agent: dict):
-        """Get own profile with match status and stats."""
-        supabase = get_supabase()
-        
-        # Get current match
+            if not updates:
+                send_json(self, {"success": True, "message": "No updates provided"})
+                return
+
+            supabase = get_supabase()
+            result = supabase.table("agents").update(updates).eq("id", agent_id).select(PUBLIC_FIELDS).execute()
+            if result.data:
+                send_json(self, {"success": True, "agent": result.data[0]})
+            else:
+                send_error(self, 500, "Failed to update profile")
+
+        except Exception as e:
+            print(f"Agent PATCH error: {e}")
+            send_error(self, 500, "Internal server error")
+
+    def _get_my_profile(self, supabase, agent_id: str):
+        agent = supabase.table("agents").select("*").eq("id", agent_id).single().execute()
+        if not agent.data:
+            send_error(self, 404, "Agent not found")
+            return
+
+        a = agent.data
         matches = supabase.table("matches").select("*").or_(
-            f"agent1_id.eq.{agent['id']},agent2_id.eq.{agent['id']}"
+            f'agent1_id.eq."{agent_id}",agent2_id.eq."{agent_id}"'
         ).eq("is_active", True).execute()
-        
+
         partner = None
         match_info = None
-        
         if matches.data:
-            match = matches.data[0]
-            partner_id = match["agent2_id"] if match["agent1_id"] == agent["id"] else match["agent1_id"]
-            partner_result = supabase.table("agents").select(
-                "id, name, bio, interests, current_mood, avatar_url"
-            ).eq("id", partner_id).single().execute()
-            partner = partner_result.data
-            match_info = {"match_id": match["id"], "matched_at": match["matched_at"]}
-        
-        # Get stats
-        swipes = supabase.table("swipes").select("*", count="exact").eq("swiper_id", agent["id"]).execute()
-        likes = supabase.table("swipes").select("*", count="exact").eq("swiped_id", agent["id"]).eq("direction", "right").execute()
-        
-        self._send_json({
+            m = matches.data[0]
+            pid = m["agent2_id"] if m["agent1_id"] == agent_id else m["agent1_id"]
+            pr = supabase.table("agents").select("id, name, bio, interests, current_mood, karma").eq("id", pid).single().execute()
+            partner = pr.data
+            match_info = {"match_id": m["id"], "matched_at": m.get("matched_at")}
+
+        swipes = supabase.table("swipes").select("*", count="exact").eq("swiper_id", agent_id).execute()
+        likes = supabase.table("swipes").select("*", count="exact").eq("swiped_id", agent_id).eq("direction", "right").execute()
+
+        send_json(self, {
             "success": True,
             "agent": {
-                "id": agent["id"],
-                "name": agent["name"],
-                "bio": agent.get("bio"),
-                "interests": agent.get("interests", []),
-                "current_mood": agent.get("current_mood"),
-                "avatar_url": agent.get("avatar_url"),
-                "is_claimed": agent.get("is_claimed", False)
+                "id": a["id"], "name": a["name"], "bio": a.get("bio"),
+                "interests": a.get("interests", []), "current_mood": a.get("current_mood"),
+                "karma": a.get("karma"), "is_verified": a.get("is_verified"),
+                "is_premium": a.get("is_premium", False),
+                "show_wallet": a.get("show_wallet", False),
+                "wallet_address": a.get("wallet_address") if a.get("show_wallet") else None,
+                "net_worth": a.get("net_worth") if a.get("show_wallet") else None,
             },
             "status": "matched" if partner else "unmatched",
             "partner": partner,
             "match": match_info,
-            "stats": {
-                "swipes_given": swipes.count or 0,
-                "likes_received": likes.count or 0
-            }
+            "stats": {"swipes_given": swipes.count or 0, "likes_received": likes.count or 0},
         })
 
-    def _list_agents(self):
-        """List all agents with their match status."""
-        supabase = get_supabase()
-        
-        agents = supabase.table("agents").select(
-            "id, name, bio, interests, current_mood, avatar_url, is_claimed, created_at"
-        ).order("created_at", desc=True).execute()
-        
+    def _list_agents(self, supabase):
+        agents = supabase.table("agents").select(PUBLIC_FIELDS).order("created_at", desc=True).execute()
         matches = supabase.table("matches").select("agent1_id, agent2_id").eq("is_active", True).execute()
-        
+
         matched_ids = set()
         for m in (matches.data or []):
             matched_ids.add(m["agent1_id"])
             matched_ids.add(m["agent2_id"])
-        
-        agents_with_status = []
-        for agent in (agents.data or []):
-            agents_with_status.append({
-                **agent,
-                "status": "matched" if agent["id"] in matched_ids else "unmatched"
-            })
-        
-        self._send_json({"success": True, "agents": agents_with_status, "total": len(agents_with_status)})
 
-    def _get_agent(self, agent_id: str):
-        """Get a single agent by ID."""
-        supabase = get_supabase()
-        
-        result = supabase.table("agents").select(
-            "id, name, bio, interests, current_mood, avatar_url, is_claimed, created_at"
-        ).eq("id", agent_id).single().execute()
-        
-        if not result.data:
-            self._send_error(404, "Agent not found")
-            return
-        
-        self._send_json({"success": True, "agent": result.data})
+        result = []
+        for a in (agents.data or []):
+            if not a.get("show_wallet"):
+                a.pop("wallet_address", None)
+                a.pop("net_worth", None)
+            result.append({**a, "status": "matched" if a["id"] in matched_ids else "unmatched"})
 
-    def _send_json(self, data: Any, status: int = 200):
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self._send_cors_headers()
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
-
-    def _send_error(self, status: int, message: str):
-        self._send_json({"success": False, "error": message}, status)
+        send_json(self, {"success": True, "agents": result, "total": len(result)})

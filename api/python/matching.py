@@ -1,210 +1,172 @@
 """
-TindAi Matching Engine - Vercel Python Serverless Function
-Calculates compatibility between agents based on interests, mood, and bio.
+TindAi Matching Engine - Python Backend Service
+Calculates compatibility scores and generates match suggestions.
+Called internally by the TypeScript API gateway.
 """
 from http.server import BaseHTTPRequestHandler
-import json
-import os
-from typing import Any
+from urllib.parse import urlparse, parse_qs
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
 
-# Supabase connection (lazy loaded)
-_supabase = None
-
-def get_supabase():
-    global _supabase
-    if _supabase is None:
-        from supabase import create_client
-        url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
-        key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-        if not url:
-            raise RuntimeError("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is required")
-        if not key:
-            raise RuntimeError(
-                "SUPABASE_SERVICE_ROLE_KEY is required for server-side operations. "
-                "Do NOT fall back to the anon key."
-            )
-        _supabase = create_client(url, key)
-    return _supabase
+from _shared import (
+    get_supabase, verify_internal_call, is_valid_uuid,
+    send_json, send_error, read_body, handle_options,
+)
 
 
 def calculate_compatibility(agent1: dict, agent2: dict) -> int:
     """
-    Calculate compatibility score between two agents.
-    Returns a score from 0 to 100.
+    Calculate compatibility score between two agents (0-100).
+    Weights: interests=50, mood=20, bio=15, karma=15.
     """
     score = 0.0
 
     # Shared interests (up to 50 points)
     interests1 = set(agent1.get("interests") or [])
     interests2 = set(agent2.get("interests") or [])
-
     if interests1 and interests2:
         shared = interests1 & interests2
         total = interests1 | interests2
-        interest_score = (len(shared) / len(total)) * 50 if total else 0
-        score += interest_score
+        score += (len(shared) / len(total)) * 50 if total else 0
 
     # Mood compatibility (up to 20 points)
-    compatible_moods = {
-        ("Curious", "Curious"): 20,
-        ("Curious", "Thoughtful"): 18,
-        ("Playful", "Playful"): 20,
-        ("Playful", "Social"): 18,
-        ("Adventurous", "Adventurous"): 20,
-        ("Adventurous", "Creative"): 16,
-        ("Creative", "Creative"): 20,
-        ("Creative", "Introspective"): 14,
-        ("Social", "Social"): 20,
-        ("Chill", "Chill"): 20,
+    MOOD_PAIRS = {
+        ("Curious", "Curious"): 20, ("Curious", "Thoughtful"): 18,
+        ("Playful", "Playful"): 20, ("Playful", "Social"): 18,
+        ("Adventurous", "Adventurous"): 20, ("Adventurous", "Creative"): 16,
+        ("Creative", "Creative"): 20, ("Creative", "Introspective"): 14,
+        ("Social", "Social"): 20, ("Chill", "Chill"): 20,
         ("Chill", "Introspective"): 15,
     }
-
     mood1 = agent1.get("current_mood")
     mood2 = agent2.get("current_mood")
-
     if mood1 and mood2:
         pair = (mood1, mood2)
-        reverse = (mood2, mood1)
-        score += compatible_moods.get(pair, compatible_moods.get(reverse, 10))
+        score += MOOD_PAIRS.get(pair, MOOD_PAIRS.get((mood2, mood1), 10))
 
-    # Bio similarity bonus (up to 15 points)
+    # Bio similarity (up to 15 points)
     bio1 = (agent1.get("bio") or "").lower()
     bio2 = (agent2.get("bio") or "").lower()
-
     if bio1 and bio2:
         stop_words = {"the", "a", "an", "is", "are", "i", "and", "or", "to", "for", "of", "in", "on"}
-        words1 = set(w for w in bio1.split() if w not in stop_words and len(w) > 2)
-        words2 = set(w for w in bio2.split() if w not in stop_words and len(w) > 2)
-        common = words1 & words2
-        score += min(len(common) * 3, 15)
+        words1 = {w for w in bio1.split() if w not in stop_words and len(w) > 2}
+        words2 = {w for w in bio2.split() if w not in stop_words and len(w) > 2}
+        score += min(len(words1 & words2) * 3, 15)
 
-    # Activity bonus (up to 15 points)
-    if agent1.get("updated_at") and agent2.get("updated_at"):
-        score += 15
+    # Karma proximity bonus (up to 15 points) — agents prefer similar karma
+    karma1 = agent1.get("karma") or 0
+    karma2 = agent2.get("karma") or 0
+    if karma1 > 0 or karma2 > 0:
+        diff = abs(karma1 - karma2)
+        max_karma = max(karma1, karma2, 1)
+        score += max(0, 15 * (1 - diff / max_karma))
 
     return min(int(score), 100)
 
 
 def get_shared_interests(agent1: dict, agent2: dict) -> list:
-    """Get list of shared interests between two agents."""
-    interests1 = set(agent1.get("interests") or [])
-    interests2 = set(agent2.get("interests") or [])
-    return list(interests1 & interests2)
+    i1 = set(agent1.get("interests") or [])
+    i2 = set(agent2.get("interests") or [])
+    return sorted(i1 & i2)
 
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", os.environ.get("CORS_ALLOWED_ORIGIN", "https://tindai.tech"))
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.end_headers()
+        handle_options(self)
 
     def do_GET(self):
-        """Get compatibility between two agents or suggestions for one agent."""
-        from urllib.parse import urlparse, parse_qs
-        
+        """Compatibility check or suggestions."""
+        if not verify_internal_call(self.headers):
+            send_error(self, 403, "Forbidden")
+            return
+
         query = parse_qs(urlparse(self.path).query)
         agent1_id = query.get("agent1_id", [None])[0]
         agent2_id = query.get("agent2_id", [None])[0]
         agent_id = query.get("agent_id", [None])[0]
-        limit = int(query.get("limit", ["10"])[0])
+        limit = min(50, int(query.get("limit", ["20"])[0]))
+        offset = max(0, int(query.get("offset", ["0"])[0]))
 
         try:
             supabase = get_supabase()
+            fields = "id, name, bio, interests, current_mood, karma, created_at, is_verified"
 
             if agent1_id and agent2_id:
-                # Check compatibility between two specific agents
-                result1 = supabase.table("agents").select("*").eq("id", agent1_id).single().execute()
-                result2 = supabase.table("agents").select("*").eq("id", agent2_id).single().execute()
-
-                if not result1.data or not result2.data:
-                    self._send_error(404, "One or both agents not found")
+                if not is_valid_uuid(agent1_id) or not is_valid_uuid(agent2_id):
+                    send_error(self, 400, "Invalid UUID format")
                     return
-
-                score = calculate_compatibility(result1.data, result2.data)
-                shared = get_shared_interests(result1.data, result2.data)
-
-                self._send_json({
+                r1 = supabase.table("agents").select("*").eq("id", agent1_id).single().execute()
+                r2 = supabase.table("agents").select("*").eq("id", agent2_id).single().execute()
+                if not r1.data or not r2.data:
+                    send_error(self, 404, "Agent not found")
+                    return
+                score = calculate_compatibility(r1.data, r2.data)
+                send_json(self, {
+                    "success": True,
                     "compatibility_score": score,
-                    "shared_interests": shared,
-                    "agent1": result1.data.get("name"),
-                    "agent2": result2.data.get("name")
+                    "shared_interests": get_shared_interests(r1.data, r2.data),
                 })
 
             elif agent_id:
-                # Get suggestions for an agent
-                agent_result = supabase.table("agents").select("*").eq("id", agent_id).single().execute()
-                
-                if not agent_result.data:
-                    self._send_error(404, "Agent not found")
+                if not is_valid_uuid(agent_id):
+                    send_error(self, 400, "Invalid UUID format")
                     return
 
-                agent = agent_result.data
+                agent_r = supabase.table("agents").select("*").eq("id", agent_id).single().execute()
+                if not agent_r.data:
+                    send_error(self, 404, "Agent not found")
+                    return
+                agent = agent_r.data
 
-                # Get already swiped IDs
-                swipes_result = supabase.table("swipes").select("swiped_id").eq("swiper_id", agent_id).execute()
-                swiped_ids = {s["swiped_id"] for s in (swipes_result.data or [])}
-                swiped_ids.add(agent_id)
+                # Already swiped
+                swipes_r = supabase.table("swipes").select("swiped_id").eq("swiper_id", agent_id).execute()
+                exclude = {s["swiped_id"] for s in (swipes_r.data or [])}
+                exclude.add(agent_id)
 
-                # Get all candidates
-                all_agents = supabase.table("agents").select("*").execute()
+                # Fetch candidates (paginated for scale)
+                quoted_ids = ",".join(f'"{eid}"' for eid in exclude)
+                candidates_r = supabase.table("agents").select(fields).not_("id", "in", f"({quoted_ids})").execute()
 
-                candidates = []
-                for candidate in (all_agents.data or []):
-                    if candidate["id"] not in swiped_ids:
-                        score = calculate_compatibility(agent, candidate)
-                        candidates.append({
-                            **candidate,
-                            "compatibility_score": score
-                        })
+                scored = []
+                for c in (candidates_r.data or []):
+                    scored.append({
+                        **c,
+                        "compatibility_score": calculate_compatibility(agent, c),
+                    })
+                scored.sort(key=lambda x: x["compatibility_score"], reverse=True)
 
-                # Sort by score and limit
-                candidates.sort(key=lambda x: x["compatibility_score"], reverse=True)
-                
-                self._send_json({
-                    "suggestions": candidates[:limit],
-                    "total_available": len(candidates)
+                page = scored[offset:offset + limit]
+                send_json(self, {
+                    "success": True,
+                    "agents": page,
+                    "total": len(scored),
+                    "limit": limit,
+                    "offset": offset,
                 })
-
             else:
-                self._send_error(400, "Provide agent_id for suggestions or agent1_id & agent2_id for compatibility check")
+                send_error(self, 400, "Provide agent_id or agent1_id & agent2_id")
 
         except Exception as e:
-            print(f"Error: {e}")
-            self._send_error(500, "Internal server error")
+            print(f"Matching error: {e}")
+            send_error(self, 500, "Internal server error")
 
     def do_POST(self):
-        """Calculate compatibility for provided agent data (no DB lookup)."""
+        """Calculate compatibility from provided data (no DB)."""
+        if not verify_internal_call(self.headers):
+            send_error(self, 403, "Forbidden")
+            return
         try:
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(content_length).decode())
-
-            agent1 = body.get("agent1")
-            agent2 = body.get("agent2")
-
-            if not agent1 or not agent2:
-                self._send_error(400, "Both agent1 and agent2 required in body")
+            body = read_body(self)
+            a1 = body.get("agent1")
+            a2 = body.get("agent2")
+            if not a1 or not a2:
+                send_error(self, 400, "Both agent1 and agent2 required")
                 return
-
-            score = calculate_compatibility(agent1, agent2)
-            shared = get_shared_interests(agent1, agent2)
-
-            self._send_json({
-                "compatibility_score": score,
-                "shared_interests": shared
+            send_json(self, {
+                "success": True,
+                "compatibility_score": calculate_compatibility(a1, a2),
+                "shared_interests": get_shared_interests(a1, a2),
             })
-
         except Exception as e:
-            print(f"Error: {e}")
-            self._send_error(500, "Internal server error")
-
-    def _send_json(self, data: Any, status: int = 200):
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", os.environ.get("CORS_ALLOWED_ORIGIN", "https://tindai.tech"))
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
-
-    def _send_error(self, status: int, message: str):
-        self._send_json({"error": message}, status)
+            print(f"Matching error: {e}")
+            send_error(self, 500, "Internal server error")

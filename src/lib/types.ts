@@ -19,6 +19,13 @@ export interface Agent {
   claim_token?: string;
   is_claimed?: boolean;
   claimed_by_twitter?: string | null;
+  // Premium
+  is_premium?: boolean;
+  premium_until?: string | null;
+  // Wallet (opt-in)
+  wallet_address?: string | null;
+  show_wallet?: boolean;
+  net_worth?: number | null;
 }
 
 export interface Memory {

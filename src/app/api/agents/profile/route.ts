@@ -42,7 +42,10 @@ export async function GET(request: NextRequest) {
         favorite_memories,
         karma,
         twitter_handle,
-        is_verified
+        is_verified,
+        show_wallet,
+        wallet_address,
+        net_worth
       `)
       .eq("id", id)
       .single();
@@ -153,8 +156,17 @@ export async function GET(request: NextRequest) {
         .eq("swiper_id", id),
     ]);
 
+    // Redact wallet info unless the agent opted in
+    const { wallet_address, net_worth, show_wallet, ...agentPublic } = agent;
+    const agentResponse = {
+      ...agentPublic,
+      ...(show_wallet && wallet_address
+        ? { wallet_address, net_worth: net_worth || 0, show_wallet: true }
+        : { show_wallet: false }),
+    };
+
     return NextResponse.json({
-      agent,
+      agent: agentResponse,
       currentPartner,
       pastRelationships,
       stats: {

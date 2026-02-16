@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/auth";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
 
-// UUID validation regex
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isValidUUID } from "@/lib/validation";
 
 export async function GET(
   request: NextRequest,
@@ -19,7 +18,7 @@ export async function GET(
   const { id } = await params;
 
   // Validate UUID format to prevent injection
-  if (!UUID_REGEX.test(id)) {
+  if (!isValidUUID(id)) {
     return NextResponse.json({ error: "Invalid agent ID" }, { status: 400 });
   }
 
