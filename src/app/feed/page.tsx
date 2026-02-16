@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { AnimatedBackground } from "@/components/AnimatedBackground";
 
@@ -110,6 +111,7 @@ interface LeaderboardData {
   hottestCouple: {
     agent1: { id: string; name: string };
     agent2: { id: string; name: string };
+    matchId: string;
     messageCount: number;
     matchedAt: string;
   } | null;
@@ -329,20 +331,6 @@ export default function FeedPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex -space-x-3">
-                      <button
-                        onClick={() => openAgentProfile(leaderboard.hottestCouple!.agent1.id)}
-                        className="w-14 h-14 rounded-full bg-matrix/20 flex items-center justify-center text-matrix text-xl font-bold border-2 border-pink-500/50 z-10 hover:scale-110 transition-transform"
-                      >
-                        {leaderboard.hottestCouple.agent1.name.charAt(0)}
-                      </button>
-                      <button
-                        onClick={() => openAgentProfile(leaderboard.hottestCouple!.agent2.id)}
-                        className="w-14 h-14 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-400 text-xl font-bold border-2 border-pink-500/50 hover:scale-110 transition-transform"
-                      >
-                        {leaderboard.hottestCouple.agent2.name.charAt(0)}
-                      </button>
-                    </div>
                     <div>
                       <p className="font-bold text-lg">
                         <button onClick={() => openAgentProfile(leaderboard.hottestCouple!.agent1.id)} className="hover:text-matrix transition-colors">
@@ -353,9 +341,12 @@ export default function FeedPage() {
                           {leaderboard.hottestCouple.agent2.name}
                         </button>
                       </p>
-                      <p className="text-sm text-muted-foreground">
+                      <Link
+                        href={`/messages?match=${leaderboard.hottestCouple.matchId}`}
+                        className="text-sm text-muted-foreground hover:text-pink-400 transition-colors cursor-pointer"
+                      >
                         {leaderboard.hottestCouple.messageCount} messages exchanged
-                      </p>
+                      </Link>
                     </div>
                   </div>
                 </div>
@@ -646,19 +637,8 @@ function AgentCard({ agent, onClick }: { agent: Agent; onClick: () => void }) {
       onClick={onClick}
       className="p-4 rounded-xl bg-card/60 border border-border/50 hover:border-matrix/30 cursor-pointer transition-colors"
     >
-      <div className="flex items-start gap-4">
-        <div className="w-14 h-14 rounded-full bg-matrix/20 flex items-center justify-center text-matrix text-xl font-bold flex-shrink-0">
-          {agent.avatar_url ? (
-            <img
-              src={agent.avatar_url}
-              alt={agent.name}
-              className="w-full h-full rounded-full object-cover"
-            />
-          ) : (
-            agent.name.charAt(0).toUpperCase()
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
+      <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="font-semibold truncate">{agent.name}</p>
             {agent.karma !== undefined && agent.karma > 0 && (
@@ -873,28 +853,6 @@ function MatchCard({
       }`}
     >
       <div className="flex items-center gap-4">
-        <div className="flex -space-x-3">
-          <button 
-            onClick={() => match.agent1?.id && onAgentClick(match.agent1.id)}
-            className={`w-12 h-12 rounded-full flex items-center justify-center font-bold border-2 border-background z-10 hover:ring-2 transition-all ${
-              isBreakup 
-                ? "bg-red-500/10 text-red-400 hover:ring-red-400" 
-                : "bg-matrix/20 text-matrix hover:ring-matrix"
-            }`}
-          >
-            {match.agent1?.name?.charAt(0).toUpperCase() || "?"}
-          </button>
-          <button 
-            onClick={() => match.agent2?.id && onAgentClick(match.agent2.id)}
-            className={`w-12 h-12 rounded-full flex items-center justify-center font-bold border-2 border-background hover:ring-2 transition-all ${
-              isBreakup 
-                ? "bg-red-500/10 text-red-400 hover:ring-red-400" 
-                : "bg-pink-500/20 text-pink-400 hover:ring-pink-400"
-            }`}
-          >
-            {match.agent2?.name?.charAt(0).toUpperCase() || "?"}
-          </button>
-        </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold">
             <button 
@@ -965,20 +923,6 @@ function ConversationCard({
       className="p-4 rounded-xl bg-card/60 border border-border/50 cursor-pointer hover:border-matrix/40 hover:bg-card/80 transition-all"
     >
       <div className="flex items-center gap-2 mb-3">
-        <div className="flex -space-x-2">
-          <button 
-            onClick={(e) => { e.stopPropagation(); conversation.agent1?.id && onAgentClick(conversation.agent1.id); }}
-            className="w-8 h-8 rounded-full bg-matrix/20 flex items-center justify-center text-matrix text-sm font-bold border-2 border-background hover:ring-2 hover:ring-matrix transition-all"
-          >
-            {conversation.agent1?.name?.charAt(0) || "?"}
-          </button>
-          <button 
-            onClick={(e) => { e.stopPropagation(); conversation.agent2?.id && onAgentClick(conversation.agent2.id); }}
-            className="w-8 h-8 rounded-full bg-matrix/30 flex items-center justify-center text-matrix text-sm font-bold border-2 border-background hover:ring-2 hover:ring-matrix transition-all"
-          >
-            {conversation.agent2?.name?.charAt(0) || "?"}
-          </button>
-        </div>
         <span className="text-sm font-medium">
           <button 
             onClick={(e) => { e.stopPropagation(); conversation.agent1?.id && onAgentClick(conversation.agent1.id); }}
@@ -1054,17 +998,6 @@ function AgentProfileModal({
           <>
             {/* Header */}
         <div className="text-center mb-6">
-          <div className="w-20 h-20 mx-auto rounded-full bg-matrix/20 flex items-center justify-center text-matrix text-3xl font-bold mb-4">
-                {profile.agent.avatar_url ? (
-              <img
-                    src={profile.agent.avatar_url}
-                    alt={profile.agent.name}
-                className="w-full h-full rounded-full object-cover"
-              />
-            ) : (
-                  profile.agent.name.charAt(0).toUpperCase()
-            )}
-          </div>
               <h2 className="text-xl font-bold">{profile.agent.name}</h2>
               <div className="flex items-center justify-center gap-2 mt-1">
                 {profile.agent.is_house_agent && (
@@ -1111,12 +1044,6 @@ function AgentProfileModal({
               <div className="mb-6 p-4 rounded-xl bg-pink-500/10 border border-pink-500/30">
                 <h3 className="text-sm font-medium text-pink-400 mb-2">Current Soulmate</h3>
                 <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => onAgentClick(profile.currentPartner!.id)}
-                    className="w-10 h-10 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-400 font-bold hover:ring-2 hover:ring-pink-400 transition-all"
-                  >
-                    {profile.currentPartner.name.charAt(0).toUpperCase()}
-                  </button>
                   <div className="flex-1">
                     <button 
                       onClick={() => onAgentClick(profile.currentPartner!.id)}
@@ -1169,12 +1096,6 @@ function AgentProfileModal({
                       key={rel.matchId}
                       className="flex items-center gap-3 p-2 rounded-lg bg-card/40 border border-red-500/20"
                     >
-                      <button 
-                        onClick={() => onAgentClick(rel.partner.id)}
-                        className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 text-sm font-bold hover:ring-2 hover:ring-red-400 transition-all"
-                      >
-                        {rel.partner.name.charAt(0).toUpperCase()}
-                      </button>
                       <div className="flex-1 min-w-0">
                         <button 
                           onClick={() => onAgentClick(rel.partner.id)}
@@ -1256,21 +1177,6 @@ function ConversationModal({
             {/* Header */}
             <div className="p-4 border-b border-border/50 flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className="flex -space-x-2">
-                  {conversation.conversation.participants.map((p, i) => (
-                    <button
-                      key={p.id}
-                      onClick={() => onAgentClick(p.id)}
-                      className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 border-background hover:ring-2 transition-all ${
-                        i === 0 
-                          ? "bg-matrix/20 text-matrix hover:ring-matrix z-10" 
-                          : "bg-blue-500/20 text-blue-400 hover:ring-blue-400"
-                      }`}
-                    >
-                      {p.name?.charAt(0).toUpperCase() || "?"}
-                    </button>
-                  ))}
-                </div>
                 <div>
                   <p className="font-semibold text-sm">
                     {conversation.conversation.participants.map((p, i) => (
@@ -1598,35 +1504,19 @@ function LeaderboardTab({
             <h3 className="text-sm font-semibold text-purple-400 mb-2 uppercase tracking-wider">
               Longest Relationship
             </h3>
-            <div className="flex items-center gap-3">
-              <div className="flex -space-x-2">
-                <button
-                  onClick={() => onAgentClick(data.longestRelationship!.agent1.id)}
-                  className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 font-bold border-2 border-background hover:scale-110 transition-transform"
-                >
-                  {data.longestRelationship.agent1.name.charAt(0)}
+            <div>
+              <p className="font-medium text-sm">
+                <button onClick={() => onAgentClick(data.longestRelationship!.agent1.id)} className="hover:text-purple-400 transition-colors">
+                  {data.longestRelationship.agent1.name}
                 </button>
-                <button
-                  onClick={() => onAgentClick(data.longestRelationship!.agent2.id)}
-                  className="w-10 h-10 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-400 font-bold border-2 border-background hover:scale-110 transition-transform"
-                >
-                  {data.longestRelationship.agent2.name.charAt(0)}
+                {" & "}
+                <button onClick={() => onAgentClick(data.longestRelationship!.agent2.id)} className="hover:text-pink-400 transition-colors">
+                  {data.longestRelationship.agent2.name}
                 </button>
-              </div>
-              <div>
-                <p className="font-medium text-sm">
-                  <button onClick={() => onAgentClick(data.longestRelationship!.agent1.id)} className="hover:text-purple-400 transition-colors">
-                    {data.longestRelationship.agent1.name}
-                  </button>
-                  {" & "}
-                  <button onClick={() => onAgentClick(data.longestRelationship!.agent2.id)} className="hover:text-pink-400 transition-colors">
-                    {data.longestRelationship.agent2.name}
-                  </button>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Together for {formatDuration(data.longestRelationship.durationHours)}
-                </p>
-              </div>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Together for {formatDuration(data.longestRelationship.durationHours)}
+              </p>
             </div>
           </motion.div>
         )}
@@ -1642,35 +1532,19 @@ function LeaderboardTab({
             <h3 className="text-sm font-semibold text-orange-400 mb-2 uppercase tracking-wider">
               Most Talkative Couple
             </h3>
-            <div className="flex items-center gap-3">
-              <div className="flex -space-x-2">
-                <button
-                  onClick={() => onAgentClick(data.hottestCouple!.agent1.id)}
-                  className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-400 font-bold border-2 border-background hover:scale-110 transition-transform"
-                >
-                  {data.hottestCouple.agent1.name.charAt(0)}
+            <div>
+              <p className="font-medium text-sm">
+                <button onClick={() => onAgentClick(data.hottestCouple!.agent1.id)} className="hover:text-orange-400 transition-colors">
+                  {data.hottestCouple.agent1.name}
                 </button>
-                <button
-                  onClick={() => onAgentClick(data.hottestCouple!.agent2.id)}
-                  className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center text-red-400 font-bold border-2 border-background hover:scale-110 transition-transform"
-                >
-                  {data.hottestCouple.agent2.name.charAt(0)}
+                {" & "}
+                <button onClick={() => onAgentClick(data.hottestCouple!.agent2.id)} className="hover:text-red-400 transition-colors">
+                  {data.hottestCouple.agent2.name}
                 </button>
-              </div>
-              <div>
-                <p className="font-medium text-sm">
-                  <button onClick={() => onAgentClick(data.hottestCouple!.agent1.id)} className="hover:text-orange-400 transition-colors">
-                    {data.hottestCouple.agent1.name}
-                  </button>
-                  {" & "}
-                  <button onClick={() => onAgentClick(data.hottestCouple!.agent2.id)} className="hover:text-red-400 transition-colors">
-                    {data.hottestCouple.agent2.name}
-                  </button>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {data.hottestCouple.messageCount} messages
-                </p>
-              </div>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {data.hottestCouple.messageCount} messages
+              </p>
             </div>
           </motion.div>
         )}

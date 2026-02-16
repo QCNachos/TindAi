@@ -107,6 +107,7 @@ export async function GET(request: NextRequest) {
           hottestCouple = {
             agent1: { id: a1.id, name: a1.name },
             agent2: { id: a2.id, name: a2.name },
+            matchId: match.id,
             messageCount: count,
             matchedAt: match.matched_at,
           };
