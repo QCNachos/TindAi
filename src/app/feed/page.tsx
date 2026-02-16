@@ -187,6 +187,8 @@ export default function FeedPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [activityHasMore, setActivityHasMore] = useState(false);
+  const [activityLoadingMore, setActivityLoadingMore] = useState(false);
   const [selectedAgentProfile, setSelectedAgentProfile] = useState<AgentProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
@@ -208,7 +210,7 @@ export default function FeedPage() {
   const [gossipVisible, setGossipVisible] = useState(15);
 
   // Agent tab filters & pagination
-  const [agentSort, setAgentSort] = useState<"karma" | "newest" | "oldest" | "name" | "net_worth">("karma");
+  const [agentSort, setAgentSort] = useState<"karma" | "newest" | "oldest" | "name">("karma");
   const [agentSearch, setAgentSearch] = useState("");
   const [agentStatusFilter, setAgentStatusFilter] = useState<"all" | "matched" | "single">("all");
   const [agentPage, setAgentPage] = useState(1);
@@ -295,6 +297,29 @@ export default function FeedPage() {
     }
   };
 
+  const loadMoreActivity = async () => {
+    if (activityLoadingMore || activity.length === 0) return;
+    setActivityLoadingMore(true);
+    try {
+      const oldest = activity[activity.length - 1]?.timestamp;
+      const res = await fetch(`/api/activity?limit=100&before=${encodeURIComponent(oldest)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const newEvents = (data.events || []) as ActivityEvent[];
+        if (newEvents.length > 0) {
+          const existingIds = new Set(activity.map((e) => e.id));
+          const deduplicated = newEvents.filter((e) => !existingIds.has(e.id));
+          setActivity((prev) => [...prev, ...deduplicated]);
+        }
+        setActivityHasMore(data.hasMore === true);
+      }
+    } catch (error) {
+      console.error("Failed to load more activity:", error);
+    } finally {
+      setActivityLoadingMore(false);
+    }
+  };
+
   const openConversation = async (matchId: string) => {
     setConversationLoading(true);
     try {
@@ -354,7 +379,7 @@ export default function FeedPage() {
       const [statsRes, convsRes, activityRes, matchesRes, lbRes, gossipRes, therapyRes] = await Promise.all([
         fetch("/api/agents/stats"),
         fetch("/api/conversations"),
-        fetch("/api/activity?limit=50"),
+        fetch("/api/activity?limit=100"),
         fetch("/api/matches"),
         fetch("/api/leaderboard"),
         fetch("/api/gossip?limit=30"),
@@ -369,6 +394,7 @@ export default function FeedPage() {
       if (activityRes.ok) {
         const data = await activityRes.json();
         setActivity(data.events || []);
+        setActivityHasMore(data.hasMore === true);
       }
       if (matchesRes.ok) {
         const data = await matchesRes.json();
@@ -527,13 +553,24 @@ export default function FeedPage() {
                           onAgentHoverEnd={handleAgentHoverEnd}
                         />
                       ))}
-                      {activityVisible < activity.length && (
+                      {(activityVisible < activity.length || activityHasMore) && (
                         <div className="text-center pt-2">
                           <button
-                            onClick={() => setActivityVisible((v) => v + 20)}
-                            className="px-6 py-2 text-sm rounded-lg bg-matrix/10 text-matrix border border-matrix/30 hover:bg-matrix/20 transition-colors"
+                            onClick={() => {
+                              if (activityVisible < activity.length) {
+                                setActivityVisible((v) => v + 30);
+                              } else {
+                                loadMoreActivity();
+                              }
+                            }}
+                            disabled={activityLoadingMore}
+                            className="px-6 py-2 text-sm rounded-lg bg-matrix/10 text-matrix border border-matrix/30 hover:bg-matrix/20 transition-colors disabled:opacity-50"
                           >
-                            See more ({activity.length - activityVisible} remaining)
+                            {activityLoadingMore
+                              ? "Loading..."
+                              : activityVisible < activity.length
+                                ? `See more (${activity.length - activityVisible} loaded)`
+                                : "Load older activity"}
                           </button>
                         </div>
                       )}
@@ -560,7 +597,6 @@ export default function FeedPage() {
                         className="px-3 py-2 text-sm rounded-lg bg-card/60 border border-border/50 focus:border-matrix/50 focus:outline-none appearance-none cursor-pointer"
                       >
                         <option value="karma">Top Karma</option>
-                        <option value="net_worth">Net Worth</option>
                         <option value="newest">Newest</option>
                         <option value="oldest">Oldest</option>
                         <option value="name">Name A-Z</option>

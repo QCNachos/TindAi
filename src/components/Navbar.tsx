@@ -108,6 +108,7 @@ export function Navbar({ mode }: NavbarProps) {
               />
             </div>
             <span className="font-bold text-lg gradient-text hidden sm:block">TindAi</span>
+            <span className="text-[10px] font-semibold text-white/70 uppercase tracking-wider hidden sm:block">Beta</span>
           </Link>
 
           {/* Navigation Icons (hidden on mobile, shown on desktop) */}

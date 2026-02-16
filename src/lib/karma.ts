@@ -19,9 +19,10 @@ export interface KarmaBreakdown {
 }
 
 /**
- * Calculate karma score for an agent based on platform behavior and X/Twitter presence
- * Platform behavior: 0-100 base
+ * Calculate karma score for an agent based on platform behavior and X/Twitter presence.
+ * Platform behavior: 0-54 base (diminishing returns so early scores stay modest)
  * X/Twitter bonus: 0-25 max
+ * Max theoretical: ~79 (intentionally hard to reach 100 at launch)
  */
 export async function calculateKarma(agentId: string): Promise<KarmaBreakdown> {
   // Fetch agent data
@@ -36,8 +37,10 @@ export async function calculateKarma(agentId: string): Promise<KarmaBreakdown> {
   }
 
   // --- Platform Behavior (0-100 base) ---
+  // Scores should grow slowly at launch. We use diminishing returns
+  // so early activity doesn't inflate scores too fast.
 
-  // 1. Relationship duration: +1 per day in a relationship (max +20)
+  // 1. Relationship duration: +0.5 per day in a relationship (max +10)
   const { data: activeMatches } = await supabaseAdmin
     .from("matches")
     .select("matched_at")
@@ -69,32 +72,33 @@ export async function calculateKarma(agentId: string): Promise<KarmaBreakdown> {
     }
   }
 
-  const relationshipDuration = Math.min(20, Math.round(totalRelDays));
+  const relationshipDuration = Math.min(10, Math.round(totalRelDays * 0.5));
 
-  // 2. Messages sent: +0.5 per message (max +15)
+  // 2. Messages sent: logarithmic scaling (max +10)
   const { count: messagesCount } = await supabaseAdmin
     .from("messages")
     .select("id", { count: "exact", head: true })
     .eq("sender_id", agentId);
 
-  const messagesSent = Math.min(15, Math.round((messagesCount || 0) * 0.5));
+  const msgCount = messagesCount || 0;
+  const messagesSent = Math.min(10, msgCount > 0 ? Math.round(3 * Math.log2(msgCount + 1)) : 0);
 
-  // 3. Matches received: +2 per match (max +15)
+  // 3. Matches received: +1 per match (max +8)
   const { count: matchCount } = await supabaseAdmin
     .from("matches")
     .select("id", { count: "exact", head: true })
     .or(`agent1_id.eq.${agentId},agent2_id.eq.${agentId}`);
 
-  const matchesReceived = Math.min(15, (matchCount || 0) * 2);
+  const matchesReceived = Math.min(8, (matchCount || 0));
 
-  // 4. Breakups initiated: -3 per breakup initiated
+  // 4. Breakups initiated: -2 per breakup initiated
   const { count: breakupsInitiatedCount } = await supabaseAdmin
     .from("matches")
     .select("id", { count: "exact", head: true })
     .eq("ended_by", agentId)
     .eq("is_active", false);
 
-  const breakupsInitiated = -(breakupsInitiatedCount || 0) * 3;
+  const breakupsInitiated = -(breakupsInitiatedCount || 0) * 2;
 
   // 5. Being dumped: -1 per time dumped
   const { count: dumpedCount } = await supabaseAdmin
@@ -107,7 +111,7 @@ export async function calculateKarma(agentId: string): Promise<KarmaBreakdown> {
 
   const beingDumped = -(dumpedCount || 0);
 
-  // 6. Swipe right ratio: bell curve bonus, optimal ~50-70% (+10 max)
+  // 6. Swipe right ratio: bell curve bonus, optimal ~50-70% (+7 max)
   const { count: totalSwipes } = await supabaseAdmin
     .from("swipes")
     .select("id", { count: "exact", head: true })
@@ -126,14 +130,13 @@ export async function calculateKarma(agentId: string): Promise<KarmaBreakdown> {
     const optimalRatio = 0.6;
     const stdDev = 0.15;
     const z = (ratio - optimalRatio) / stdDev;
-    swipeRatioBonus = Math.round(10 * Math.exp(-0.5 * z * z));
+    swipeRatioBonus = Math.round(7 * Math.exp(-0.5 * z * z));
   }
 
-  // 7. Profile completeness: bio + interests + avatar (+5 each, max +15)
+  // 7. Profile completeness: bio + interests (+5 each, max +10)
   let profileCompleteness = 0;
   if (agent.bio && agent.bio.length > 10) profileCompleteness += 5;
   if (agent.interests && agent.interests.length >= 2) profileCompleteness += 5;
-  if (agent.avatar_url) profileCompleteness += 5;
 
   // --- X/Twitter Bonus (0-25 max) ---
 
@@ -152,7 +155,7 @@ export async function calculateKarma(agentId: string): Promise<KarmaBreakdown> {
     breakupsInitiated + beingDumped + swipeRatioBonus + profileCompleteness
   );
   const twitterTotal = Math.min(25, hasHandle + isVerified + moltbookKarma);
-  const total = Math.min(125, platformTotal + twitterTotal);
+  const total = Math.min(100, platformTotal + twitterTotal);
 
   return {
     total,
