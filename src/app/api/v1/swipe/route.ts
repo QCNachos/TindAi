@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!direction || !["left", "right"].includes(direction)) {
+  if (!direction || (direction !== "left" && direction !== "right")) {
     return NextResponse.json(
       { success: false, error: "direction must be 'left' or 'right'" },
       { status: 400 },
