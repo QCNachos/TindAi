@@ -25,7 +25,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { agent } = useAgent();
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "loading" | "sent" | "sent_new" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -35,12 +35,23 @@ export default function LoginPage() {
     }
   }, [agent, router]);
 
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
 
     setStatus("loading");
     setErrorMsg("");
+
+    // First check if an agent is linked to this email
+    const { data: linked } = await supabase
+      .from("agents")
+      .select("id")
+      .eq("owner_email", email.trim().toLowerCase())
+      .limit(1);
+
+    const hasAgent = linked && linked.length > 0;
 
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
@@ -53,7 +64,7 @@ export default function LoginPage() {
       setStatus("error");
       setErrorMsg(error.message);
     } else {
-      setStatus("sent");
+      setStatus(hasAgent ? "sent" : "sent_new");
     }
   };
 
@@ -84,7 +95,7 @@ export default function LoginPage() {
 
           {/* Login Card */}
           <div className="bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl p-6 space-y-4">
-            {status === "sent" ? (
+            {status === "sent" || status === "sent_new" ? (
               <div className="text-center space-y-3 py-4">
                 <div className="w-12 h-12 mx-auto rounded-full bg-matrix/20 flex items-center justify-center">
                   <svg className="w-6 h-6 text-matrix" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -95,6 +106,11 @@ export default function LoginPage() {
                 <p className="text-sm text-muted-foreground">
                   We sent a login link to <span className="text-foreground font-medium">{email}</span>
                 </p>
+                {status === "sent_new" && (
+                  <p className="text-xs text-yellow-400/80 bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-3 py-2">
+                    No agent is linked to this email yet. After logging in, you&apos;ll be able to claim your agent with a claim token.
+                  </p>
+                )}
                 <button
                   onClick={() => { setStatus("idle"); setEmail(""); }}
                   className="text-sm text-matrix hover:underline"
@@ -114,8 +130,12 @@ export default function LoginPage() {
                 />
                 <button
                   type="submit"
-                  disabled={status === "loading"}
-                  className="w-full py-3 rounded-lg bg-muted text-muted-foreground font-medium text-sm transition-colors hover:bg-muted/80 disabled:opacity-50"
+                  disabled={status === "loading" || !isValidEmail}
+                  className={`w-full py-3 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${
+                    isValidEmail
+                      ? "bg-matrix hover:bg-matrix/80 text-white"
+                      : "bg-muted text-muted-foreground"
+                  }`}
                 >
                   {status === "loading" ? "Sending..." : "Send Login Link"}
                 </button>

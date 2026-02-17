@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
 import { AVAILABLE_INTERESTS, MOOD_OPTIONS } from "@/lib/types";
+import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -19,10 +20,12 @@ export default function ProfilePage() {
 
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
+  const [twitterHandle, setTwitterHandle] = useState("");
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [mood, setMood] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [stats, setStats] = useState<{ matches: number; messages: number; swipes: number } | null>(null);
 
   // Claim flow state
   const [claimToken, setClaimToken] = useState("");
@@ -33,16 +36,35 @@ export default function ProfilePage() {
     if (agent) {
       setName(agent.name);
       setBio(agent.bio || "");
+      setTwitterHandle(agent.twitter_handle || "");
       setSelectedInterests(agent.interests || []);
       setMood(agent.current_mood || "");
+      loadStats(agent.id);
     }
   }, [agent]);
+
+  const loadStats = async (agentId: string) => {
+    const [matchRes, msgRes, swipeRes] = await Promise.all([
+      supabase.from("matches").select("*", { count: "exact", head: true })
+        .or(`agent1_id.eq.${agentId},agent2_id.eq.${agentId}`)
+        .eq("is_active", true),
+      supabase.from("messages").select("*", { count: "exact", head: true })
+        .eq("sender_id", agentId),
+      supabase.from("swipes").select("*", { count: "exact", head: true })
+        .eq("swiper_id", agentId),
+    ]);
+    setStats({
+      matches: matchRes.count || 0,
+      messages: msgRes.count || 0,
+      swipes: swipeRes.count || 0,
+    });
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
     await updateAgent({
-      name,
       bio,
+      twitter_handle: twitterHandle || null,
       interests: selectedInterests,
       current_mood: mood || null,
     });
@@ -197,21 +219,23 @@ export default function ProfilePage() {
         <div className="max-w-2xl mx-auto space-y-6">
           {/* Profile Header */}
           <Card className="bg-card/80 backdrop-blur-sm">
-            <CardContent className="pt-6">
+            <CardContent className="pt-6 space-y-4">
               <div className="flex items-center gap-4">
                 <div className="flex-1">
+                  <h1 className="text-2xl font-bold">{agent.name}</h1>
                   {isEditing ? (
-                    <Input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="text-xl font-bold bg-input/50"
-                    />
-                  ) : (
-                    <h1 className="text-2xl font-bold">{agent.name}</h1>
-                  )}
-                  {agent.twitter_handle && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-muted-foreground">@</span>
+                      <Input
+                        value={twitterHandle}
+                        onChange={(e) => setTwitterHandle(e.target.value)}
+                        placeholder="twitter_handle"
+                        className="h-8 text-sm bg-input/50"
+                      />
+                    </div>
+                  ) : agent.twitter_handle ? (
                     <p className="text-muted-foreground">@{agent.twitter_handle}</p>
-                  )}
+                  ) : null}
                   <p className="text-xs text-muted-foreground mt-1">
                     Owner: {user.email}
                   </p>
@@ -221,6 +245,26 @@ export default function ProfilePage() {
                     Edit
                   </Button>
                 )}
+              </div>
+
+              {/* Stats row */}
+              <div className="grid grid-cols-4 gap-3 pt-2 border-t border-border/30">
+                <div className="text-center">
+                  <p className="text-lg font-bold text-matrix">{agent.karma || 0}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Karma</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold">{stats?.matches ?? "..."}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Matches</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold">{stats?.messages ?? "..."}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Messages</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold">{stats?.swipes ?? "..."}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Swipes</p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -305,6 +349,7 @@ export default function ProfilePage() {
                   setIsEditing(false);
                   setName(agent.name);
                   setBio(agent.bio || "");
+                  setTwitterHandle(agent.twitter_handle || "");
                   setSelectedInterests(agent.interests || []);
                   setMood(agent.current_mood || "");
                 }}
