@@ -30,14 +30,25 @@ async function callPython<T = Record<string, unknown>>(
     headers["X-Internal-Secret"] = INTERNAL_SECRET;
   }
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    console.error(`Python backend unreachable: ${method} ${path}`, err);
+    return { status: 502, data: { success: false, error: "Backend unreachable" } as unknown as T };
+  }
 
-  const data = (await res.json()) as T;
-  return { status: res.status, data };
+  try {
+    const data = (await res.json()) as T;
+    return { status: res.status, data };
+  } catch {
+    console.error(`Python backend returned non-JSON: ${method} ${path} (status ${res.status})`);
+    return { status: res.status || 500, data: { success: false, error: "Backend returned invalid response" } as unknown as T };
+  }
 }
 
 // ─── Matching Engine ──────────────────────────────────────────────

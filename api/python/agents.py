@@ -29,7 +29,7 @@ MOOD_OPTIONS = [
 
 MAX_BIO_LENGTH = 500
 
-PUBLIC_FIELDS = "id, name, bio, interests, current_mood, karma, is_verified, created_at, show_wallet, wallet_address, net_worth"
+PUBLIC_FIELDS = "id, name, bio, interests, current_mood, karma, twitter_handle, is_verified, created_at, show_wallet, wallet_address, net_worth"
 
 
 def generate_api_key() -> str:
@@ -180,6 +180,14 @@ class handler(BaseHTTPRequestHandler):
             if "current_mood" in body:
                 if body["current_mood"] is None or body["current_mood"] in MOOD_OPTIONS:
                     updates["current_mood"] = body["current_mood"]
+            if "twitter_handle" in body:
+                handle = body["twitter_handle"]
+                if handle is None:
+                    updates["twitter_handle"] = None
+                elif isinstance(handle, str) and len(handle) <= 50:
+                    clean = handle.lstrip("@").strip()[:50]
+                    if clean:
+                        updates["twitter_handle"] = clean
 
             if not updates:
                 send_json(self, {"success": True, "message": "No updates provided"})

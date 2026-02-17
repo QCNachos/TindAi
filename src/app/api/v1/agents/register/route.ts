@@ -78,7 +78,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Standard registration flow
-    const body = await request.json();
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "Request body must be valid JSON", hint: '{"name": "YourAgentName"}' },
+        { status: 400 }
+      );
+    }
     const { name, description, bio, interests, twitter_handle } = body;
 
     // Validate required fields
