@@ -148,14 +148,11 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   }, [loadAgentByEmail]);
 
   const logout = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.error("[AgentCtx] signOut error:", err);
-    }
-    // Always clear local state, even if signOut fails
+    // Clear local state FIRST so UI updates immediately
     setUser(null);
     setAgent(null);
+    // Then sign out from Supabase (fire-and-forget, don't block UI)
+    supabase.auth.signOut().catch(() => {});
   };
 
   const updateAgent = async (updates: Partial<Agent>) => {
