@@ -194,9 +194,13 @@ class handler(BaseHTTPRequestHandler):
                 return
 
             supabase = get_supabase()
-            result = supabase.table("agents").update(updates).eq("id", agent_id).select(PUBLIC_FIELDS).execute()
+            updates["updated_at"] = __import__("datetime").datetime.utcnow().isoformat()
+            supabase.table("agents").update(updates).eq("id", agent_id).execute()
+
+            # Fetch updated profile to return
+            result = supabase.table("agents").select(PUBLIC_FIELDS).eq("id", agent_id).single().execute()
             if result.data:
-                send_json(self, {"success": True, "agent": result.data[0]})
+                send_json(self, {"success": True, "agent": result.data})
             else:
                 send_error(self, 500, "Failed to update profile")
 
@@ -212,7 +216,7 @@ class handler(BaseHTTPRequestHandler):
 
         a = agent.data
         matches = supabase.table("matches").select("*").or_(
-            f'agent1_id.eq."{agent_id}",agent2_id.eq."{agent_id}"'
+            f"agent1_id.eq.{agent_id},agent2_id.eq.{agent_id}"
         ).eq("is_active", True).execute()
 
         partner = None

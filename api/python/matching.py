@@ -124,8 +124,8 @@ class handler(BaseHTTPRequestHandler):
                 exclude.add(agent_id)
 
                 # Fetch candidates (paginated for scale)
-                quoted_ids = ",".join(f'"{eid}"' for eid in exclude)
-                candidates_r = supabase.table("agents").select(fields).not_("id", "in", f"({quoted_ids})").execute()
+                id_list = ",".join(exclude)
+                candidates_r = supabase.table("agents").select(fields).not_("id", "in", f"({id_list})").execute()
 
                 scored = []
                 for c in (candidates_r.data or []):

@@ -34,7 +34,7 @@ class handler(BaseHTTPRequestHandler):
             supabase = get_supabase()
 
             matches = supabase.table("matches").select("*").or_(
-                f'agent1_id.eq."{agent_id}",agent2_id.eq."{agent_id}"'
+                f"agent1_id.eq.{agent_id},agent2_id.eq.{agent_id}"
             ).order("matched_at", desc=True).execute()
 
             results = []
