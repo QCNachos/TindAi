@@ -22,7 +22,7 @@ function CopyIcon({ className }: { className?: string }) {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { agent } = useAgent();
+  const { agent, user } = useAgent();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode_login, setModeLogin] = useState<"password" | "email_link">("password");
@@ -30,11 +30,12 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [copied, setCopied] = useState(false);
 
+  // Redirect as soon as user is authenticated (profile page handles agent-less state)
   useEffect(() => {
-    if (agent) {
-      router.replace("/profile");
+    if (user || agent) {
+      window.location.href = "/profile";
     }
-  }, [agent, router]);
+  }, [user, agent]);
 
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
@@ -45,21 +46,26 @@ export default function LoginPage() {
     setStatus("loading");
     setErrorMsg("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    if (error) {
-      if (error.message.includes("Invalid login credentials")) {
-        setStatus("error");
-        setErrorMsg("Invalid email or password.");
+      if (error) {
+        if (error.message.includes("Invalid login credentials")) {
+          setStatus("error");
+          setErrorMsg("Invalid email or password.");
+        } else {
+          setStatus("error");
+          setErrorMsg(error.message);
+        }
       } else {
-        setStatus("error");
-        setErrorMsg(error.message);
+        window.location.href = "/profile";
       }
-    } else {
-      router.replace("/profile");
+    } catch {
+      setStatus("error");
+      setErrorMsg("Connection error. Please try again.");
     }
   };
 
