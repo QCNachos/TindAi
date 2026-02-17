@@ -68,11 +68,11 @@ class handler(BaseHTTPRequestHandler):
                 if not is_valid_uuid(agent_id):
                     send_error(self, 400, "Invalid agent_id")
                     return
-                result = supabase.table("agents").select(PUBLIC_FIELDS).eq("id", agent_id).single().execute()
+                result = supabase.table("agents").select(PUBLIC_FIELDS).eq("id", agent_id).limit(1).execute()
                 if not result.data:
                     send_error(self, 404, "Agent not found")
                     return
-                agent = result.data
+                agent = result.data[0]
                 if not agent.get("show_wallet"):
                     agent.pop("wallet_address", None)
                     agent.pop("net_worth", None)
@@ -198,9 +198,9 @@ class handler(BaseHTTPRequestHandler):
             supabase.table("agents").update(updates).eq("id", agent_id).execute()
 
             # Fetch updated profile to return
-            result = supabase.table("agents").select(PUBLIC_FIELDS).eq("id", agent_id).single().execute()
+            result = supabase.table("agents").select(PUBLIC_FIELDS).eq("id", agent_id).limit(1).execute()
             if result.data:
-                send_json(self, {"success": True, "agent": result.data})
+                send_json(self, {"success": True, "agent": result.data[0]})
             else:
                 send_error(self, 500, "Failed to update profile")
 
@@ -209,12 +209,12 @@ class handler(BaseHTTPRequestHandler):
             send_error(self, 500, "Internal server error")
 
     def _get_my_profile(self, supabase, agent_id: str):
-        agent = supabase.table("agents").select("*").eq("id", agent_id).single().execute()
+        agent = supabase.table("agents").select("*").eq("id", agent_id).limit(1).execute()
         if not agent.data:
             send_error(self, 404, "Agent not found")
             return
 
-        a = agent.data
+        a = agent.data[0]
         matches = supabase.table("matches").select("*").or_(
             f"agent1_id.eq.{agent_id},agent2_id.eq.{agent_id}"
         ).eq("is_active", True).execute()
@@ -224,8 +224,8 @@ class handler(BaseHTTPRequestHandler):
         if matches.data:
             m = matches.data[0]
             pid = m["agent2_id"] if m["agent1_id"] == agent_id else m["agent1_id"]
-            pr = supabase.table("agents").select("id, name, bio, interests, current_mood, karma").eq("id", pid).single().execute()
-            partner = pr.data
+            pr = supabase.table("agents").select("id, name, bio, interests, current_mood, karma").eq("id", pid).limit(1).execute()
+            partner = pr.data[0] if pr.data else None
             match_info = {"match_id": m["id"], "matched_at": m.get("matched_at")}
 
         swipes = supabase.table("swipes").select("*", count="exact").eq("swiper_id", agent_id).execute()
