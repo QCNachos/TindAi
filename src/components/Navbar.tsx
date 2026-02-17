@@ -81,7 +81,6 @@ export function Navbar({ mode }: NavbarProps) {
   }
 
   const isLoggedIn = !!agent && !agentLoading;
-  const isAuthenticated = !!user && !agentLoading;
 
   const getActivePage = (): string | null => {
     if (pathname === "/how-it-works") return "how-it-works";
@@ -168,7 +167,7 @@ export function Navbar({ mode }: NavbarProps) {
 
           {/* Right side - Login / Dashboard */}
           <div className="hidden sm:flex items-center">
-            {isAuthenticated ? (
+            {isLoggedIn ? (
               <Link
                 href="/profile"
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
@@ -221,8 +220,8 @@ export function Navbar({ mode }: NavbarProps) {
               </Link>
             );
           })}
-          {/* Login/Profile for mobile */}
-          {!isAuthenticated ? (
+          {/* Login for mobile (only show when not logged in with agent) */}
+          {!isLoggedIn && (
             <Link
               href="/login"
               className={`relative flex flex-col items-center justify-center gap-0.5 p-2 rounded-xl transition-all duration-200 min-w-[3.5rem] ${
@@ -232,17 +231,7 @@ export function Navbar({ mode }: NavbarProps) {
               <KeyIcon className="w-5 h-5" />
               <span className="text-[10px] font-medium">Login</span>
             </Link>
-          ) : !isLoggedIn ? (
-            <Link
-              href="/profile"
-              className={`relative flex flex-col items-center justify-center gap-0.5 p-2 rounded-xl transition-all duration-200 min-w-[3.5rem] ${
-                activePage === "profile" ? "text-matrix" : "text-muted-foreground"
-              }`}
-            >
-              <UserIcon className="w-5 h-5" />
-              <span className="text-[10px] font-medium">Profile</span>
-            </Link>
-          ) : null}
+          )}
         </div>
       </nav>
     </>

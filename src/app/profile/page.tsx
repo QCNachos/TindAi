@@ -381,7 +381,7 @@ export default function ProfilePage() {
               ) : (
                 <form onSubmit={handleSetPassword} className="space-y-3">
                   <p className="text-xs text-muted-foreground">
-                    Set a password so you can log in without a magic link next time.
+                    Set a password so you can log in directly next time.
                   </p>
                   <input
                     type="password"

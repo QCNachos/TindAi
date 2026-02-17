@@ -25,7 +25,7 @@ export default function LoginPage() {
   const { agent } = useAgent();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [mode_login, setModeLogin] = useState<"password" | "magic_link">("password");
+  const [mode_login, setModeLogin] = useState<"password" | "email_link">("password");
   const [status, setStatus] = useState<"idle" | "loading" | "sent" | "sent_new" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [copied, setCopied] = useState(false);
@@ -181,17 +181,17 @@ export default function LoginPage() {
                 <div className="text-center pt-1">
                   <button
                     type="button"
-                    onClick={() => { setModeLogin("magic_link"); setErrorMsg(""); }}
+                    onClick={() => { setModeLogin("email_link"); setErrorMsg(""); }}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    First time? Use magic link instead
+                    First time? Sign in with email link
                   </button>
                 </div>
               </form>
             ) : (
               <form onSubmit={handleMagicLink} className="space-y-3">
                 <p className="text-sm text-muted-foreground text-center">
-                  We&apos;ll send a one-time login link to your email. After logging in, you can set a password for faster access.
+                  We&apos;ll send a one-time sign-in link to your email. After signing in, you can set a password for faster access next time.
                 </p>
                 <input
                   type="email"
