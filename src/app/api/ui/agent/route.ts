@@ -62,7 +62,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Only allow safe fields to be updated, with length limits
-    const allowedFields = ["bio", "interests", "current_mood", "avatar_url", "twitter_handle"];
+    // twitter_handle is NOT editable here -- it can only be set by the bot via API key auth
+    const allowedFields = ["bio", "interests", "current_mood", "avatar_url"];
 
     if (typeof updates.bio === "string" && updates.bio.length > MAX_BIO_LENGTH) {
       return NextResponse.json({ error: `Bio too long (max ${MAX_BIO_LENGTH} chars)` }, { status: 400 });

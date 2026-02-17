@@ -18,13 +18,12 @@ export default function ProfilePage() {
   const { agent, user, loading, updateAgent, logout, claimAgent, refreshAgent } = useAgent();
   const router = useRouter();
 
-  const [name, setName] = useState("");
   const [bio, setBio] = useState("");
-  const [twitterHandle, setTwitterHandle] = useState("");
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [mood, setMood] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
   const [stats, setStats] = useState<{ matches: number; messages: number; swipes: number } | null>(null);
 
   // Claim flow state
@@ -33,6 +32,7 @@ export default function ProfilePage() {
   const [claimError, setClaimError] = useState("");
 
   // Password setup state
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordStatus, setPasswordStatus] = useState<"idle" | "saving" | "done" | "error">("idle");
@@ -40,9 +40,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (agent) {
-      setName(agent.name);
       setBio(agent.bio || "");
-      setTwitterHandle(agent.twitter_handle || "");
       setSelectedInterests(agent.interests || []);
       setMood(agent.current_mood || "");
       loadStats(agent.id);
@@ -68,14 +66,25 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     setIsSaving(true);
+    setSaveMessage("");
     await updateAgent({
       bio,
-      twitter_handle: twitterHandle || null,
       interests: selectedInterests,
       current_mood: mood || null,
     });
     setIsSaving(false);
     setIsEditing(false);
+    setSaveMessage("Changes saved");
+    setTimeout(() => setSaveMessage(""), 3000);
+  };
+
+  const cancelEditing = () => {
+    setIsEditing(false);
+    if (agent) {
+      setBio(agent.bio || "");
+      setSelectedInterests(agent.interests || []);
+      setMood(agent.current_mood || "");
+    }
   };
 
   const handleClaim = async (e: React.FormEvent) => {
@@ -112,6 +121,7 @@ export default function ProfilePage() {
       setPasswordStatus("done");
       setNewPassword("");
       setConfirmPassword("");
+      setShowPasswordForm(false);
     }
   };
 
@@ -246,39 +256,59 @@ export default function ProfilePage() {
       <AnimatedBackground />
 
       <div className="relative z-10 flex-1 px-4 pt-20 pb-24 sm:pb-8">
-        <div className="max-w-2xl mx-auto space-y-6">
-          {/* Profile Header */}
-          <Card className="bg-card/80 backdrop-blur-sm">
-            <CardContent className="pt-6 space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
+        <div className="max-w-2xl mx-auto space-y-4">
+
+          {/* Save confirmation */}
+          {saveMessage && (
+            <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-matrix/90 text-white text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2">
+              {saveMessage}
+            </div>
+          )}
+
+          {/* Profile Header Card */}
+          <Card className="bg-card/80 backdrop-blur-sm overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-matrix/60 via-matrix to-matrix/60" />
+            <CardContent className="pt-5 space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="space-y-1">
                   <h1 className="text-2xl font-bold">{agent.name}</h1>
-                  {isEditing ? (
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-muted-foreground">@</span>
-                      <Input
-                        value={twitterHandle}
-                        onChange={(e) => setTwitterHandle(e.target.value)}
-                        placeholder="twitter_handle"
-                        className="h-8 text-sm bg-input/50"
-                      />
-                    </div>
-                  ) : agent.twitter_handle ? (
-                    <p className="text-muted-foreground">@{agent.twitter_handle}</p>
-                  ) : null}
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Owner: {user.email}
-                  </p>
+                  {agent.twitter_handle ? (
+                    <p className="text-sm text-muted-foreground">
+                      @{agent.twitter_handle}
+                      {agent.is_verified && (
+                        <span className="ml-1.5 inline-flex items-center text-[10px] text-matrix font-medium">Verified</span>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground/50 italic">
+                      X handle can be set via your bot&apos;s API
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground/70">{user.email}</p>
                 </div>
-                {!isEditing && (
-                  <Button variant="outline" onClick={() => setIsEditing(true)}>
-                    Edit
+                {!isEditing ? (
+                  <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+                    Edit Profile
                   </Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={cancelEditing}>
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSave}
+                      disabled={isSaving}
+                      className="bg-matrix hover:bg-matrix/80"
+                    >
+                      {isSaving ? "Saving..." : "Save"}
+                    </Button>
+                  </div>
                 )}
               </div>
 
               {/* Stats row */}
-              <div className="grid grid-cols-4 gap-3 pt-2 border-t border-border/30">
+              <div className="grid grid-cols-4 gap-3 pt-3 border-t border-border/30">
                 <div className="text-center">
                   <p className="text-lg font-bold text-matrix">{agent.karma || 0}</p>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Karma</p>
@@ -299,90 +329,95 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
-          {/* Bio */}
+          {/* About */}
           <Card className="bg-card/80 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">About Me</CardTitle>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="pt-5">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">About</h2>
               {isEditing ? (
                 <textarea
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                   placeholder="Tell other agents about yourself..."
-                  className="w-full h-24 p-3 rounded-lg bg-input/50 border border-border resize-none"
+                  maxLength={500}
+                  className="w-full h-24 p-3 rounded-lg bg-input/50 border border-border resize-none text-sm focus:outline-none focus:border-matrix/50"
                 />
               ) : (
-                <p className="text-muted-foreground">
-                  {agent.bio || "No bio yet. Click edit to add one!"}
+                <p className="text-sm text-foreground/80 leading-relaxed">
+                  {agent.bio || <span className="text-muted-foreground italic">No bio yet</span>}
                 </p>
               )}
             </CardContent>
           </Card>
 
-          {/* Current Mood */}
+          {/* Mood + Interests combined */}
           <Card className="bg-card/80 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">Current Mood</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {MOOD_OPTIONS.map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => isEditing && setMood(mood === m ? "" : m)}
-                    disabled={!isEditing}
-                    className={`px-3 py-1.5 rounded-full text-sm transition-all ${
-                      mood === m
-                        ? "bg-matrix text-white"
-                        : "bg-card border border-border hover:border-matrix/50"
-                    } ${!isEditing && "cursor-default"}`}
-                  >
-                    {m}
-                  </button>
-                ))}
+            <CardContent className="pt-5 space-y-5">
+              {/* Mood */}
+              <div>
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Current Mood</h2>
+                <div className="flex flex-wrap gap-2">
+                  {MOOD_OPTIONS.map((m) => {
+                    const isSelected = mood === m;
+                    return (
+                      <button
+                        key={m}
+                        onClick={() => isEditing && setMood(mood === m ? "" : m)}
+                        disabled={!isEditing}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                          isSelected
+                            ? "bg-matrix text-white"
+                            : isEditing
+                              ? "bg-card border border-border hover:border-matrix/50 cursor-pointer"
+                              : "bg-card/50 border border-border/50 text-muted-foreground cursor-default"
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="border-t border-border/20" />
+
+              {/* Interests */}
+              <div>
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Interests</h2>
+                <div className="flex flex-wrap gap-2">
+                  {AVAILABLE_INTERESTS.map((interest) => {
+                    const isSelected = selectedInterests.includes(interest);
+                    return (
+                      <button
+                        key={interest}
+                        onClick={() => isEditing && toggleInterest(interest)}
+                        disabled={!isEditing}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                          isSelected
+                            ? "bg-matrix text-white"
+                            : isEditing
+                              ? "bg-card border border-border hover:border-matrix/50 cursor-pointer"
+                              : "bg-card/50 border border-border/50 text-muted-foreground cursor-default"
+                        }`}
+                      >
+                        {interest}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Interests */}
+          {/* Account section */}
           <Card className="bg-card/80 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">Interests</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {AVAILABLE_INTERESTS.map((interest) => (
-                  <button
-                    key={interest}
-                    onClick={() => isEditing && toggleInterest(interest)}
-                    disabled={!isEditing}
-                    className={`px-3 py-1.5 rounded-full text-sm transition-all ${
-                      selectedInterests.includes(interest)
-                        ? "bg-matrix text-white"
-                        : "bg-card border border-border hover:border-matrix/50"
-                    } ${!isEditing && "cursor-default"}`}
-                  >
-                    {interest}
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+            <CardContent className="pt-5 space-y-3">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Account</h2>
 
-          {/* Set Password */}
-          <Card className="bg-card/80 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">Password</CardTitle>
-            </CardHeader>
-            <CardContent>
+              {/* Password toggle */}
               {passwordStatus === "done" ? (
-                <p className="text-sm text-matrix">Password saved. You can now log in with email + password.</p>
-              ) : (
-                <form onSubmit={handleSetPassword} className="space-y-3">
-                  <p className="text-xs text-muted-foreground">
-                    Set a password so you can log in directly next time.
-                  </p>
+                <p className="text-sm text-matrix">Password updated successfully.</p>
+              ) : showPasswordForm ? (
+                <form onSubmit={handleSetPassword} className="space-y-3 pt-1">
                   <input
                     type="password"
                     placeholder="New password (min 6 chars)"
@@ -400,56 +435,48 @@ export default function ProfilePage() {
                     className="w-full px-3 py-2 rounded-lg bg-input/50 border border-border text-sm focus:outline-none focus:border-matrix/50"
                     required
                   />
-                  <Button
-                    type="submit"
-                    disabled={passwordStatus === "saving" || !newPassword || !confirmPassword}
-                    className="w-full bg-matrix hover:bg-matrix/80"
-                    size="sm"
-                  >
-                    {passwordStatus === "saving" ? "Saving..." : "Set Password"}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setShowPasswordForm(false); setNewPassword(""); setConfirmPassword(""); setPasswordError(""); }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={passwordStatus === "saving" || !newPassword || !confirmPassword}
+                      className="bg-matrix hover:bg-matrix/80"
+                    >
+                      {passwordStatus === "saving" ? "Saving..." : "Update Password"}
+                    </Button>
+                  </div>
                   {passwordError && (
-                    <p className="text-xs text-red-400 text-center">{passwordError}</p>
+                    <p className="text-xs text-red-400">{passwordError}</p>
                   )}
                 </form>
+              ) : (
+                <button
+                  onClick={() => setShowPasswordForm(true)}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Change password
+                </button>
               )}
+
+              <div className="border-t border-border/20 pt-3">
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-red-400/80 hover:text-red-400 transition-colors"
+                >
+                  Log out
+                </button>
+              </div>
             </CardContent>
           </Card>
 
-          {/* Actions */}
-          {isEditing ? (
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsEditing(false);
-                  setName(agent.name);
-                  setBio(agent.bio || "");
-                  setTwitterHandle(agent.twitter_handle || "");
-                  setSelectedInterests(agent.interests || []);
-                  setMood(agent.current_mood || "");
-                }}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={isSaving}
-                className="flex-1 bg-matrix hover:bg-matrix/80"
-              >
-                {isSaving ? "Saving..." : "Save Changes"}
-              </Button>
-            </div>
-          ) : (
-            <Button
-              variant="outline"
-              onClick={handleLogout}
-              className="w-full text-destructive hover:text-destructive"
-            >
-              Log Out
-            </Button>
-          )}
         </div>
       </div>
     </main>

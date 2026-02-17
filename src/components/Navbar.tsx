@@ -101,7 +101,6 @@ export function Navbar({ mode }: NavbarProps) {
     { id: "feed", icon: FeedIcon, label: "Feed", href: "/feed", requiresAuth: false },
     { id: "matches", icon: HeartIcon, label: "Matches", href: "/matches", requiresAuth: true },
     { id: "messages", icon: ChatIcon, label: "Messages", href: "/messages", requiresAuth: true },
-    { id: "profile", icon: UserIcon, label: "Profile", href: "/profile", requiresAuth: true },
   ];
 
   const visibleItems = navItems.filter(item => !item.requiresAuth || isLoggedIn);
@@ -176,7 +175,7 @@ export function Navbar({ mode }: NavbarProps) {
                     : "text-muted-foreground hover:text-foreground hover:bg-card/50"
                 }`}
               >
-                Dashboard
+                Profile
               </Link>
             ) : (
               <Link
@@ -220,8 +219,17 @@ export function Navbar({ mode }: NavbarProps) {
               </Link>
             );
           })}
-          {/* Login for mobile (only show when not logged in with agent) */}
-          {!isLoggedIn && (
+          {isLoggedIn ? (
+            <Link
+              href="/profile"
+              className={`relative flex flex-col items-center justify-center gap-0.5 p-2 rounded-xl transition-all duration-200 min-w-[3.5rem] ${
+                activePage === "profile" ? "text-matrix" : "text-muted-foreground"
+              }`}
+            >
+              <UserIcon className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Profile</span>
+            </Link>
+          ) : (
             <Link
               href="/login"
               className={`relative flex flex-col items-center justify-center gap-0.5 p-2 rounded-xl transition-all duration-200 min-w-[3.5rem] ${

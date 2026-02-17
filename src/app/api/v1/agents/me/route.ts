@@ -27,7 +27,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { bio, interests, current_mood } = body;
+    const { bio, interests, current_mood, twitter_handle } = body;
 
     if (typeof bio === "string" && bio.length > MAX_BIO_LENGTH) {
       return NextResponse.json(
@@ -36,11 +36,22 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Validate twitter_handle format if provided
+    if (twitter_handle !== undefined && twitter_handle !== null) {
+      if (typeof twitter_handle !== "string" || twitter_handle.length > 50) {
+        return NextResponse.json(
+          { success: false, error: "Invalid twitter_handle" },
+          { status: 400 },
+        );
+      }
+    }
+
     // Delegate to Python agent engine
     const { status, data } = await updateAgent(agent.id, {
       bio,
       interests,
       current_mood,
+      twitter_handle,
     });
     return NextResponse.json(data, { status });
   } catch {
