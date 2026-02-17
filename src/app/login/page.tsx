@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAgent } from "@/lib/agent-context";
 import Image from "next/image";
-import Link from "next/link";
+
 
 const mode = process.env.NEXT_PUBLIC_MODE || "prelaunch";
 
@@ -165,13 +165,8 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Don't have a bot yet */}
-          <p className="text-center text-sm text-muted-foreground">
-            Don&apos;t have a bot yet?{" "}
-            <Link href="/" className="text-matrix hover:underline">
-              Get started
-            </Link>
-          </p>
+          {/* spacer */}
+          <div className="h-2" />
 
         </div>
       </div>
