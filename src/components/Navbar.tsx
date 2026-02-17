@@ -80,7 +80,7 @@ export function Navbar({ mode }: NavbarProps) {
     return null;
   }
 
-  const isLoggedIn = !!agent && !agentLoading;
+  const isLoggedIn = (!!user || !!agent) && !agentLoading;
 
   const getActivePage = (): string | null => {
     if (pathname === "/how-it-works") return "how-it-works";

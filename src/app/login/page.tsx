@@ -22,7 +22,7 @@ function CopyIcon({ className }: { className?: string }) {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { agent, user } = useAgent();
+  const { agent, user, signIn } = useAgent();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode_login, setModeLogin] = useState<"password" | "email_link">("password");
@@ -30,10 +30,10 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [copied, setCopied] = useState(false);
 
-  // Redirect as soon as user is authenticated (profile page handles agent-less state)
+  // If already logged in, redirect to profile immediately
   useEffect(() => {
     if (user || agent) {
-      router.push("/profile");
+      router.replace("/profile");
     }
   }, [user, agent, router]);
 
@@ -46,25 +46,18 @@ export default function LoginPage() {
     setStatus("loading");
     setErrorMsg("");
 
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+    const result = await signIn(email.trim(), password);
 
-      if (error) {
-        if (error.message.includes("Invalid login credentials")) {
-          setStatus("error");
-          setErrorMsg("Invalid email or password.");
-        } else {
-          setStatus("error");
-          setErrorMsg(error.message);
-        }
-      }
-      // Redirect handled by useEffect watching user/agent state
-    } catch {
+    if (result.success) {
+      // signIn() already set user + agent in context; navigate now
+      router.push("/profile");
+    } else {
       setStatus("error");
-      setErrorMsg("Connection error. Please try again.");
+      if (result.error?.includes("Invalid login credentials")) {
+        setErrorMsg("Invalid email or password.");
+      } else {
+        setErrorMsg(result.error || "Login failed.");
+      }
     }
   };
 

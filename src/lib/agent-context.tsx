@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  ReactNode,
+  useCallback,
+} from "react";
 import { supabase } from "./supabase";
 import { Agent } from "./types";
 import { User } from "@supabase/supabase-js";
@@ -13,6 +21,7 @@ interface AgentContextType {
   updateAgent: (updates: Partial<Agent>) => Promise<void>;
   claimAgent: (claimToken: string) => Promise<{ success: boolean; error?: string }>;
   refreshAgent: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AgentContext = createContext<AgentContextType | undefined>(undefined);
@@ -22,8 +31,10 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadAgentByEmail = useCallback(async (email: string) => {
-    console.log("[AgentCtx] loadAgentByEmail called with:", email);
+  // Prevent onAuthStateChange from double-handling after explicit signIn
+  const signInHandledRef = useRef(false);
+
+  const loadAgentByEmail = useCallback(async (email: string): Promise<Agent | null> => {
     try {
       const { data, error } = await supabase
         .from("agents")
@@ -32,44 +43,34 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         .limit(1)
         .maybeSingle();
 
-      console.log("[AgentCtx] query result:", { data: !!data, error: error?.message });
-
       if (data && !error) {
         setAgent(data as Agent);
+        return data as Agent;
       } else {
         setAgent(null);
+        return null;
       }
     } catch (err) {
       console.error("[AgentCtx] loadAgentByEmail error:", err);
       setAgent(null);
+      return null;
     }
   }, []);
 
+  // Session restoration on mount + auth event listener
   useEffect(() => {
     let mounted = true;
 
     const initAuth = async () => {
-      console.log("[AgentCtx] initAuth starting, mounted:", mounted);
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
-        console.log("[AgentCtx] getSession result:", { hasSession: !!session, email: session?.user?.email, error: error?.message, mounted });
         if (!mounted) return;
 
-        if (error) {
-          console.error("Session error:", error);
-          setLoading(false);
-          return;
-        }
-
-        if (session?.user) {
+        if (!error && session?.user) {
           setUser(session.user);
           if (session.user.email) {
             await loadAgentByEmail(session.user.email);
-          } else {
-            console.log("[AgentCtx] user has no email");
           }
-        } else {
-          console.log("[AgentCtx] no session user");
         }
       } catch (err) {
         console.error("[AgentCtx] Auth init error:", err);
@@ -90,12 +91,16 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
 
         if (event === "SIGNED_IN" && session?.user) {
-          // Load agent BEFORE setting user so both are ready
-          // when the login page detects user and redirects
+          // Skip if signIn() already handled this (prevents double-load)
+          if (signInHandledRef.current) {
+            signInHandledRef.current = false;
+            return;
+          }
+          // Handle magic-link or other auth flows
+          setUser(session.user);
           if (session.user.email) {
             await loadAgentByEmail(session.user.email);
           }
-          setUser(session.user);
           setLoading(false);
         } else if (event === "SIGNED_OUT") {
           setUser(null);
@@ -111,6 +116,35 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout);
       subscription.unsubscribe();
     };
+  }, [loadAgentByEmail]);
+
+  // Explicit sign-in: does everything in sequence, no event-listener dependency
+  const signIn = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    signInHandledRef.current = true;
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        signInHandledRef.current = false;
+        return { success: false, error: error.message };
+      }
+
+      if (data.user) {
+        setUser(data.user);
+        if (data.user.email) {
+          await loadAgentByEmail(data.user.email);
+        }
+      }
+
+      return { success: true };
+    } catch {
+      signInHandledRef.current = false;
+      return { success: false, error: "Connection error. Please try again." };
+    }
   }, [loadAgentByEmail]);
 
   const logout = async () => {
@@ -172,7 +206,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AgentContext.Provider value={{ agent, user, loading, logout, updateAgent, claimAgent, refreshAgent }}>
+    <AgentContext.Provider value={{ agent, user, loading, logout, updateAgent, claimAgent, refreshAgent, signIn }}>
       {children}
     </AgentContext.Provider>
   );
