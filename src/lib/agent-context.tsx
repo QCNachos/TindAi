@@ -23,6 +23,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadAgentByEmail = useCallback(async (email: string) => {
+    console.log("[AgentCtx] loadAgentByEmail called with:", email);
     try {
       const { data, error } = await supabase
         .from("agents")
@@ -31,13 +32,15 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         .limit(1)
         .maybeSingle();
 
+      console.log("[AgentCtx] query result:", { data: !!data, error: error?.message });
+
       if (data && !error) {
         setAgent(data as Agent);
       } else {
         setAgent(null);
       }
     } catch (err) {
-      console.error("Failed to load agent by email:", err);
+      console.error("[AgentCtx] loadAgentByEmail error:", err);
       setAgent(null);
     }
   }, []);
@@ -46,8 +49,10 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     let mounted = true;
 
     const initAuth = async () => {
+      console.log("[AgentCtx] initAuth starting, mounted:", mounted);
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
+        console.log("[AgentCtx] getSession result:", { hasSession: !!session, email: session?.user?.email, error: error?.message, mounted });
         if (!mounted) return;
 
         if (error) {
@@ -60,10 +65,14 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           setUser(session.user);
           if (session.user.email) {
             await loadAgentByEmail(session.user.email);
+          } else {
+            console.log("[AgentCtx] user has no email");
           }
+        } else {
+          console.log("[AgentCtx] no session user");
         }
       } catch (err) {
-        console.error("Auth init error:", err);
+        console.error("[AgentCtx] Auth init error:", err);
       }
 
       if (mounted) setLoading(false);
