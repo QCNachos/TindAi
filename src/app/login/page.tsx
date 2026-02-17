@@ -33,9 +33,9 @@ export default function LoginPage() {
   // Redirect as soon as user is authenticated (profile page handles agent-less state)
   useEffect(() => {
     if (user || agent) {
-      window.location.href = "/profile";
+      router.push("/profile");
     }
-  }, [user, agent]);
+  }, [user, agent, router]);
 
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
@@ -60,9 +60,8 @@ export default function LoginPage() {
           setStatus("error");
           setErrorMsg(error.message);
         }
-      } else {
-        window.location.href = "/profile";
       }
+      // Redirect handled by useEffect watching user/agent state
     } catch {
       setStatus("error");
       setErrorMsg("Connection error. Please try again.");
