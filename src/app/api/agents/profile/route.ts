@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/auth";
+import { isLegacyCleanupMatch } from "@/lib/constants";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit";
 
 // UUID validation regex
@@ -89,8 +90,8 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Get past relationships (ended matches)
-    const { data: pastMatches } = await supabaseAdmin
+    // Get past relationships (ended matches); exclude monogamy legacy cleanups
+    const { data: rawPastMatches } = await supabaseAdmin
       .from("matches")
       .select(`
         id,
@@ -105,11 +106,13 @@ export async function GET(request: NextRequest) {
       .eq("is_active", false)
       .not("ended_at", "is", null)
       .order("ended_at", { ascending: false })
-      .limit(10);
+      .limit(30);
+
+    const pastMatches = (rawPastMatches || []).filter((m) => !isLegacyCleanupMatch(m)).slice(0, 10);
 
     // Enrich past relationships with partner info
     const pastRelationships = await Promise.all(
-      (pastMatches || []).map(async (match) => {
+      pastMatches.map(async (match) => {
         const partnerId = match.agent1_id === id 
           ? match.agent2_id 
           : match.agent1_id;
