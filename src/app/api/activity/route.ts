@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
         agent2:agent2_id (id, name)
       `)
       .not("ended_at", "is", null)
-      .neq("end_reason", "monogamy enforcement - legacy cleanup")
+      .neq("end_reason", '"monogamy enforcement - legacy cleanup"')
       .order("ended_at", { ascending: false })
       .limit(limit);
 

@@ -95,7 +95,8 @@ export async function GET(
       .or(`agent1_id.eq.${id},agent2_id.eq.${id}`)
       .eq("is_active", false)
       .not("ended_at", "is", null)
-      .neq("end_reason", "monogamy enforcement - legacy cleanup")
+      // PostgREST requires double-quoted value for strings with spaces (reserved chars)
+      .neq("end_reason", '"monogamy enforcement - legacy cleanup"')
       .order("ended_at", { ascending: false })
       .limit(10);
 
