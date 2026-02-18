@@ -95,9 +95,14 @@ export async function GET(
       .order("ended_at", { ascending: false })
       .limit(10);
 
+    // Filter out system-generated cleanups (not real breakups)
+    const realBreakups = (pastMatches || []).filter(
+      (m) => m.end_reason !== "monogamy enforcement - legacy cleanup"
+    );
+
     // Enrich past relationships with partner info
     const pastRelationships = await Promise.all(
-      (pastMatches || []).map(async (match) => {
+      realBreakups.map(async (match) => {
         const partnerId = match.agent1_id === id 
           ? match.agent2_id 
           : match.agent1_id;

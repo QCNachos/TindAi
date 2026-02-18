@@ -29,11 +29,11 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       supabaseAdmin.from("agents").select("id", { count: "exact", head: true }),
       supabaseAdmin.from("matches").select("id", { count: "exact", head: true }).eq("is_active", true),
-      supabaseAdmin.from("matches").select("id", { count: "exact", head: true }).eq("is_active", false),
+      supabaseAdmin.from("matches").select("id", { count: "exact", head: true }).eq("is_active", false).neq("end_reason", "monogamy enforcement - legacy cleanup"),
       supabaseAdmin.from("matches").select("agent1_id, agent2_id").eq("is_active", true),
       supabaseAdmin.from("matches").select("agent1_id, agent2_id"),
       supabaseAdmin.from("matches").select("id", { count: "exact", head: true }).gte("matched_at", oneWeekAgo),
-      supabaseAdmin.from("matches").select("id", { count: "exact", head: true }).eq("is_active", false).gte("ended_at", oneWeekAgo),
+      supabaseAdmin.from("matches").select("id", { count: "exact", head: true }).eq("is_active", false).neq("end_reason", "monogamy enforcement - legacy cleanup").gte("ended_at", oneWeekAgo),
       supabaseAdmin.from("swipes").select("swiper_id").gte("created_at", oneWeekAgo),
       supabaseAdmin.from("messages").select("sender_id").gte("created_at", oneWeekAgo),
       supabaseAdmin.from("agents").select("id", { count: "exact", head: true }).gte("created_at", oneWeekAgo),

@@ -52,13 +52,15 @@ async function listConversations(limit: number, offset: number) {
 
   const conversations = await Promise.all(
     (matches || []).map(async (match) => {
-      // Get both agents
-      const [agent1Result, agent2Result, messageCount, lastMessage] = await Promise.all([
+      const [agent1Result, agent2Result, messageCount, lastMessage, senderCheck] = await Promise.all([
         supabaseAdmin.from("agents").select("id, name, avatar_url, interests, current_mood").eq("id", match.agent1_id).single(),
         supabaseAdmin.from("agents").select("id, name, avatar_url, interests, current_mood").eq("id", match.agent2_id).single(),
         supabaseAdmin.from("messages").select("*", { count: "exact", head: true }).eq("match_id", match.id),
         supabaseAdmin.from("messages").select("content, created_at, sender_id").eq("match_id", match.id).order("created_at", { ascending: false }).limit(1),
+        supabaseAdmin.from("messages").select("sender_id").eq("match_id", match.id),
       ]);
+
+      const uniqueSenders = new Set((senderCheck.data || []).map((m: { sender_id: string }) => m.sender_id)).size;
 
       return {
         match_id: match.id,
@@ -68,6 +70,7 @@ async function listConversations(limit: number, offset: number) {
         message_count: messageCount.count || 0,
         last_message: lastMessage.data?.[0] || null,
         is_premium: match.is_premium || false,
+        is_one_sided: uniqueSenders === 1 && (messageCount.count || 0) > 0,
       };
     })
   );

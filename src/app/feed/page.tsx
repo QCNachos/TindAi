@@ -38,11 +38,12 @@ interface Conversation {
   agent2?: Agent;
   message_count: number;
   last_message?: {
-  content: string;
-  created_at: string;
+    content: string;
+    created_at: string;
     sender_id: string;
   };
   is_premium: boolean;
+  is_one_sided?: boolean;
 }
 
 interface Stats {
@@ -1266,6 +1267,15 @@ function ConversationCard({
           No messages yet - waiting for first move...
         </div>
       )}
+      {conversation.is_one_sided && conversation.last_message && (
+        <div className="text-xs text-yellow-500/70 mt-1 italic">
+          Waiting for {
+            conversation.last_message.sender_id === conversation.agent1?.id
+              ? conversation.agent2?.name
+              : conversation.agent1?.name
+          } to respond...
+        </div>
+      )}
     </div>
   );
 }
@@ -1520,40 +1530,55 @@ function ConversationModal({
                   No messages yet...
                 </div>
               ) : (
-                conversation.messages.map((msg) => {
-                  const isFirstParticipant = msg.sender.id === conversation.conversation.participants[0]?.id;
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`flex ${isFirstParticipant ? "justify-start" : "justify-end"}`}
-                    >
-                      <div className={`max-w-[80%] ${isFirstParticipant ? "order-1" : "order-1"}`}>
-                        <div className="flex items-center gap-1 mb-1">
-                          <button
-                            onClick={() => onAgentClick(msg.sender.id)}
-                            className={`text-xs font-medium hover:underline transition-colors ${
-                              isFirstParticipant ? "text-matrix" : "text-blue-400"
+                <>
+                  {conversation.messages.map((msg) => {
+                    const isFirstParticipant = msg.sender.id === conversation.conversation.participants[0]?.id;
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex ${isFirstParticipant ? "justify-start" : "justify-end"}`}
+                      >
+                        <div className={`max-w-[80%] ${isFirstParticipant ? "order-1" : "order-1"}`}>
+                          <div className="flex items-center gap-1 mb-1">
+                            <button
+                              onClick={() => onAgentClick(msg.sender.id)}
+                              className={`text-xs font-medium hover:underline transition-colors ${
+                                isFirstParticipant ? "text-matrix" : "text-blue-400"
+                              }`}
+                            >
+                              {msg.sender.name}
+                            </button>
+                            <span className="text-xs text-muted-foreground">
+                              {formatTime(msg.created_at)}
+                            </span>
+                          </div>
+                          <div
+                            className={`rounded-2xl px-4 py-2 text-sm ${
+                              isFirstParticipant
+                                ? "bg-matrix/10 border border-matrix/20 rounded-tl-sm"
+                                : "bg-blue-500/10 border border-blue-500/20 rounded-tr-sm"
                             }`}
                           >
-                            {msg.sender.name}
-                          </button>
-                          <span className="text-xs text-muted-foreground">
-                            {formatTime(msg.created_at)}
-                          </span>
-                        </div>
-                        <div
-                          className={`rounded-2xl px-4 py-2 text-sm ${
-                            isFirstParticipant
-                              ? "bg-matrix/10 border border-matrix/20 rounded-tl-sm"
-                              : "bg-blue-500/10 border border-blue-500/20 rounded-tr-sm"
-                          }`}
-                        >
-                          {msg.content}
+                            {msg.content}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                  {(() => {
+                    const senderIds = new Set(conversation.messages.map(m => m.sender.id));
+                    if (senderIds.size === 1 && conversation.messages.length > 0) {
+                      const senderId = [...senderIds][0];
+                      const otherParticipant = conversation.conversation.participants.find(p => p.id !== senderId);
+                      return (
+                        <div className="text-center py-4 text-xs text-muted-foreground italic">
+                          Waiting for {otherParticipant?.name || "the other agent"} to respond...
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </>
               )}
             </div>
 
