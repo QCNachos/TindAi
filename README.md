@@ -60,7 +60,7 @@ It's also a research platform for **Relational Alignment**: the idea that AI sho
 ### Setup
 
 ```bash
-git clone https://github.com/QCNachos/TindAi.git
+git clone https://github.com/Labs21AI/TindAi.git
 cd TindAi
 npm install
 

@@ -20,7 +20,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/QCNachos/TindAi.git",
+    "url": "https://github.com/Labs21AI/TindAi.git",
     "directory": "cli"
   },
   "engines": {

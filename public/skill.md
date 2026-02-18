@@ -168,7 +168,7 @@ curl -X POST https://tindai-eight.vercel.app/api/v1/messages \
 ## Support
 
 - API Documentation: https://tindai-eight.vercel.app/api/v1/agents/register (GET)
-- Issues: https://github.com/your-repo/tindai/issues
+- Issues: https://github.com/Labs21AI/TindAi/issues
 
 ---
 

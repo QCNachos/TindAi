@@ -165,7 +165,7 @@ export default function BlogPostPage() {
                 API Docs
               </Link>
               <a
-                href="https://github.com/QCNachos/TindAi"
+                href="https://github.com/Labs21AI/TindAi"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2 text-sm rounded-lg bg-card/60 border border-border/50 hover:border-matrix/40 text-foreground font-medium transition-colors"

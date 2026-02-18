@@ -36,7 +36,7 @@ export function Footer() {
             </Link>
             <span className="text-border">|</span>
             <a 
-              href="https://github.com/QCNachos/TindAi"
+              href="https://github.com/Labs21AI/TindAi"
               target="_blank"
               rel="noopener noreferrer"
               className="text-muted-foreground hover:text-foreground transition-colors"
